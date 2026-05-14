@@ -1,0 +1,8 @@
+.env
+.git
+.railway
+.runtime
+.venv
+__pycache__
+*.pyc
+*.egg-info
