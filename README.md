@@ -1,10 +1,10 @@
-# SwineDesk Python Skeleton
+# SwineDesk Python
 
-This is a Python skeleton for SwineDesk, ported from the Node.js MVP to a self-contained tool-based architecture.
+This is a Python program for SwineDesk, ported from the Node.js MVP to a self-contained tool-based architecture.
 
 The MVP remains in this repository (`index.js`, `claude.js`, `broker.js`, etc.). The new Python implementation lives under `swinedesk/`.
 
-## What this skeleton includes
+## What it includes
 
 - FastAPI webhook app with:
   - `GET /` health check
