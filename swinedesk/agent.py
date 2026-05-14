@@ -45,12 +45,6 @@ def _filter_registry(
     return {path: tool_cls for path, tool_cls in full_registry.items() if path in allowed_paths}
 
 
-_model_name = settings.model_name.removeprefix("anthropic:")
-_anthropic_model = AnthropicModel(
-    _model_name,
-    provider=AnthropicProvider(api_key=settings.anthropic_api_key),
-)
-
 ALL_CUSTOM_TOOLS = _discover_swinedesk_tools()
 
 COMMON_TOOL_PATHS = {
@@ -108,8 +102,14 @@ ROLE_REGISTRIES = {
 
 
 def _build_agent(role: str, registry: dict[str, type[Tool]]) -> PydanticAgent[SwineDeskDeps, str]:
+    model_name = settings.model_name.removeprefix("anthropic:")
+    anthropic_model = AnthropicModel(
+        model_name,
+        provider=AnthropicProvider(api_key=settings.anthropic_api_key),
+    )
+
     agent = PydanticAgent[SwineDeskDeps, str](
-        _anthropic_model,
+        anthropic_model,
         tools=[create_execute_tool(registry)],
         deps_type=SwineDeskDeps,
         output_type=str,
@@ -128,7 +128,16 @@ def _build_agent(role: str, registry: dict[str, type[Tool]]) -> PydanticAgent[Sw
     return agent
 
 
-ROLE_AGENTS = {role: _build_agent(role, registry) for role, registry in ROLE_REGISTRIES.items()}
+_role_agents: dict[str, PydanticAgent[SwineDeskDeps, str]] | None = None
+
+
+def _get_role_agents() -> dict[str, PydanticAgent[SwineDeskDeps, str]]:
+    global _role_agents
+    if _role_agents is None:
+        _role_agents = {
+            role: _build_agent(role, registry) for role, registry in ROLE_REGISTRIES.items()
+        }
+    return _role_agents
 
 
 async def run_swinedesk_agent(
@@ -140,7 +149,7 @@ async def run_swinedesk_agent(
     """Route to the correct external-role agent based on state.role."""
     _ = message_history
     deps = SwineDeskDeps(state=state)
-    selected_agent = ROLE_AGENTS.get(state.role)
+    selected_agent = _get_role_agents().get(state.role)
     if selected_agent is None:
         raise ValueError(f"Unsupported SwineDesk SMS role: {state.role}")
     return await selected_agent.run(user_prompt, deps=deps)
