@@ -1,0 +1,2 @@
+"""SwineDesk Python skeleton package."""
+
