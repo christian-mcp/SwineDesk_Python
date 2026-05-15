@@ -21,7 +21,7 @@ class CreateSellListing(Tool, name="create_sell_listing"):
     ARGUMENTS = {
         "market": Arg("WEAN_PIGS or FEEDER_PIGS"),
         "head_count": Arg("Total number of pigs to sell"),
-        "health": Arg("Health status"),
+        "health": Arg("Health status — must be one of: CLEAN, PEDV, PRRS"),
         "weight_range": Arg("Weight range", optional=True),
         "num_loads": Arg("Number of loads", optional=True),
         "first_ship_date": Arg("First available ship date", optional=True),

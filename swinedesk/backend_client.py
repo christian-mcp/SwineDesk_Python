@@ -67,6 +67,19 @@ class BackendClient:
     def _normalize_role(self, raw_role: str | None) -> str:
         return ROLE_ALIASES.get((raw_role or "unknown").lower().strip(), "unknown")
 
+    def _to_legacy_sell_order_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Translate SMS listing fields into the legacy /v1/orders/sell contract."""
+        legacy: dict[str, Any] = {
+            "phone": payload.get("phone", ""),
+            "market": payload.get("market", ""),
+            "headCount": payload.get("head_count"),
+            "health": payload.get("health", ""),
+            "pricePerHead": payload.get("price_target"),
+            "weightRange": payload.get("weight_range"),
+            "shipDate": payload.get("first_ship_date"),
+        }
+        return {key: value for key, value in legacy.items() if value not in (None, "")}
+
     async def resolve_actor_by_phone(self, phone: str) -> dict[str, Any]:
         """Resolve actor role and profile context for an inbound phone number."""
         logger.info("Resolving actor by phone via primary SMS endpoint: phone=%s", phone)
@@ -115,7 +128,9 @@ class BackendClient:
             return await self.post("/v1/sms/market/sell-listings", payload)
         except httpx.HTTPError:
             # Backward-compatible fallback to the existing SwineDesk route.
-            return await self.post("/v1/orders/sell", payload)
+            legacy_payload = self._to_legacy_sell_order_payload(payload)
+            logger.info("Falling back to legacy sell order payload=%s", legacy_payload)
+            return await self.post("/v1/orders/sell", legacy_payload)
 
     async def create_buy_request(self, payload: dict[str, Any]) -> dict[str, Any]:
         try:
