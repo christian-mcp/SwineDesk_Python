@@ -124,6 +124,7 @@ async def sms_webhook(
     twiml = MessagingResponse()
     inbound = (body or "").strip()
     phone = (from_phone or "").strip()
+    logger.info("Inbound SMS received: from=%s body=%r", phone, inbound)
 
     if not inbound or not phone:
         twiml.message("Couldn't read your message. Try again.")
@@ -137,6 +138,7 @@ async def sms_webhook(
 
         actor = await backend.resolve_actor_by_phone(phone)
         resolved_role = str(actor.get("role", "unknown"))
+        logger.info("Resolved inbound phone=%s to role=%s actor=%s", phone, resolved_role, actor)
         actor_updates = {
             "role": resolved_role,
             "actor_id": str(actor.get("actor_id", actor.get("id", ""))),
@@ -150,6 +152,7 @@ async def sms_webhook(
         session = await update_session(phone, actor_updates)
 
         if resolved_role == "unknown":
+            logger.warning("Phone %s resolved as unknown; sending unknown-contact reply", phone)
             inferred_intent = _infer_unknown_intent(inbound)
             now_iso = datetime.now(timezone.utc).isoformat()
             contact_attempt = {

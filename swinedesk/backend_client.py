@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import httpx
 
 from swinedesk.notifications import send_sms_notification
 from swinedesk.settings import settings
+
+logger = logging.getLogger(__name__)
 
 
 ROLE_ALIASES = {
@@ -66,20 +69,37 @@ class BackendClient:
 
     async def resolve_actor_by_phone(self, phone: str) -> dict[str, Any]:
         """Resolve actor role and profile context for an inbound phone number."""
+        logger.info("Resolving actor by phone via primary SMS endpoint: phone=%s", phone)
         try:
             data = await self.get("/v1/sms/actors/resolve", params={"phone": phone})
-        except httpx.HTTPError:
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "Primary SMS actor lookup failed for phone=%s path=%s error=%s",
+                phone,
+                "/v1/sms/actors/resolve",
+                repr(exc),
+            )
             try:
+                logger.info("Falling back to legacy role lookup endpoint: phone=%s", phone)
                 legacy = await self.get("/v1/roles/resolve", params={"phone": phone})
-            except httpx.HTTPError:
+            except httpx.HTTPError as legacy_exc:
+                logger.error(
+                    "Legacy role lookup failed for phone=%s path=%s error=%s",
+                    phone,
+                    "/v1/roles/resolve",
+                    repr(legacy_exc),
+                )
                 return {"role": "unknown", "phone": phone}
+            logger.info("Legacy role lookup succeeded for phone=%s payload=%s", phone, legacy)
             return {
                 "role": self._normalize_role(str(legacy.get("role", "unknown"))),
                 "phone": phone,
             }
 
+        logger.info("Primary SMS actor lookup succeeded for phone=%s payload=%s", phone, data)
         data["role"] = self._normalize_role(str(data.get("role", "unknown")))
         data.setdefault("phone", phone)
+        logger.info("Normalized actor lookup result for phone=%s role=%s", phone, data.get("role"))
         return data
 
     async def resolve_phone_role(self, phone: str) -> str:
