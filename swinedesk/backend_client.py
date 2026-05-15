@@ -150,10 +150,16 @@ class BackendClient:
         self, actor_id: str, role: str, filters: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         params = {"actorId": actor_id, "role": role, **(filters or {})}
-        return await self.get("/v1/sms/market/open-requests", params=params)
+        try:
+            return await self.get("/v1/sms/market/open-requests", params=params)
+        except httpx.HTTPError:
+            return {"requests": [], "loads": []}
 
     async def get_my_request_detail(self, actor_id: str, request_id: str) -> dict[str, Any]:
-        return await self.get(f"/v1/sms/market/requests/{request_id}", params={"actorId": actor_id})
+        try:
+            return await self.get(f"/v1/sms/market/requests/{request_id}", params={"actorId": actor_id})
+        except httpx.HTTPError:
+            return {"msg": "Request detail unavailable.", "request_id": request_id}
 
     async def get_order_status(self, order_id: str) -> dict[str, Any]:
         """Backward-compatible direct order lookup for legacy tools."""
@@ -167,34 +173,58 @@ class BackendClient:
 
     async def list_my_loads(self, actor_id: str, role: str, payload: dict[str, Any]) -> dict[str, Any]:
         params = {"actorId": actor_id, "role": role, **payload}
-        return await self.get("/v1/sms/loads", params=params)
+        try:
+            return await self.get("/v1/sms/loads", params=params)
+        except httpx.HTTPError:
+            return {"loads": []}
 
     async def get_my_load_detail(self, actor_id: str, role: str, load_id: str) -> dict[str, Any]:
-        return await self.get(f"/v1/sms/loads/{load_id}", params={"actorId": actor_id, "role": role})
+        try:
+            return await self.get(f"/v1/sms/loads/{load_id}", params={"actorId": actor_id, "role": role})
+        except httpx.HTTPError:
+            return {"msg": "Load detail unavailable.", "load_id": load_id}
 
     async def get_driver_details(self, actor_id: str, role: str, load_id: str) -> dict[str, Any]:
-        return await self.get(
-            f"/v1/sms/loads/{load_id}/driver",
-            params={"actorId": actor_id, "role": role},
-        )
+        try:
+            return await self.get(
+                f"/v1/sms/loads/{load_id}/driver",
+                params={"actorId": actor_id, "role": role},
+            )
+        except httpx.HTTPError:
+            return {"msg": "Driver details unavailable.", "load_id": load_id}
 
     async def get_freight_loads(self, actor_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        return await self.get("/v1/sms/freight/loads", params={"actorId": actor_id, **payload})
+        try:
+            return await self.get("/v1/sms/freight/loads", params={"actorId": actor_id, **payload})
+        except httpx.HTTPError:
+            return {"loads": []}
 
     async def get_freight_load_detail(self, actor_id: str, load_id: str) -> dict[str, Any]:
-        return await self.get(f"/v1/sms/freight/loads/{load_id}", params={"actorId": actor_id})
+        try:
+            return await self.get(f"/v1/sms/freight/loads/{load_id}", params={"actorId": actor_id})
+        except httpx.HTTPError:
+            return {"msg": "Freight load detail unavailable.", "load_id": load_id}
 
     async def confirm_freight_assignment(self, actor_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        return await self.post("/v1/sms/freight/confirm", {"actorId": actor_id, **payload})
+        try:
+            return await self.post("/v1/sms/freight/confirm", {"actorId": actor_id, **payload})
+        except httpx.HTTPError:
+            return {"success": False, "msg": "Freight confirmation unavailable."}
 
     async def submit_freight_details(self, actor_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        return await self.post("/v1/sms/freight/details", {"actorId": actor_id, **payload})
+        try:
+            return await self.post("/v1/sms/freight/details", {"actorId": actor_id, **payload})
+        except httpx.HTTPError:
+            return {"success": False, "msg": "Freight details submission unavailable."}
 
     async def get_health_cert_status(self, actor_id: str, role: str, load_id: str) -> dict[str, Any]:
-        return await self.get(
-            f"/v1/sms/health/loads/{load_id}",
-            params={"actorId": actor_id, "role": role},
-        )
+        try:
+            return await self.get(
+                f"/v1/sms/health/loads/{load_id}",
+                params={"actorId": actor_id, "role": role},
+            )
+        except httpx.HTTPError:
+            return {"msg": "Health cert status unavailable.", "load_id": load_id}
 
     async def mark_health_cert_received(self, payload: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -208,16 +238,28 @@ class BackendClient:
             return await self.patch(f"/v1/loads/{load_id}/health-cert", fallback)
 
     async def get_vet_pending_loads(self, actor_id: str) -> dict[str, Any]:
-        return await self.get(f"/v1/sms/vets/{actor_id}/pending-health-certs")
+        try:
+            return await self.get(f"/v1/sms/vets/{actor_id}/pending-health-certs")
+        except httpx.HTTPError:
+            return {"load_ids": [], "loads": []}
 
     async def submit_grading(self, actor_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        return await self.post("/v1/sms/grading", {"actorId": actor_id, **payload})
+        try:
+            return await self.post("/v1/sms/grading", {"actorId": actor_id, **payload})
+        except httpx.HTTPError:
+            return {"success": False, "msg": "Grading submission unavailable."}
 
     async def get_grading_submission_status(self, actor_id: str, load_id: str) -> dict[str, Any]:
-        return await self.get(f"/v1/sms/grading/{load_id}", params={"actorId": actor_id})
+        try:
+            return await self.get(f"/v1/sms/grading/{load_id}", params={"actorId": actor_id})
+        except httpx.HTTPError:
+            return {"msg": "Grading status unavailable.", "load_id": load_id}
 
     async def report_delivery_issue(self, actor_id: str, role: str, payload: dict[str, Any]) -> dict[str, Any]:
-        return await self.post("/v1/sms/issues", {"actorId": actor_id, "role": role, **payload})
+        try:
+            return await self.post("/v1/sms/issues", {"actorId": actor_id, "role": role, **payload})
+        except httpx.HTTPError:
+            return {"success": False, "msg": "Issue reporting unavailable."}
 
     async def create_unknown_contact_attempt(self, payload: dict[str, Any]) -> dict[str, Any]:
         try:
