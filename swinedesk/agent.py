@@ -140,6 +140,41 @@ def _get_role_agents() -> dict[str, PydanticAgent[SwineDeskDeps, str]]:
     return _role_agents
 
 
+def _format_message_history(message_history: list[dict[str, Any]] | None) -> str:
+    """Convert stored SMS history into a compact transcript for the model."""
+    if not message_history:
+        return ""
+
+    lines: list[str] = []
+    for entry in message_history:
+        role = str(entry.get("role", "")).strip().lower()
+        content = str(entry.get("content", "")).strip()
+        if not content:
+            continue
+        speaker = "Assistant" if role == "assistant" else "User"
+        lines.append(f"{speaker}: {content}")
+    return "\n".join(lines)
+
+
+def _build_agent_input(
+    user_prompt: str,
+    message_history: list[dict[str, Any]] | None = None,
+) -> str:
+    """Build the model input, including prior SMS turns when available."""
+    transcript = _format_message_history(message_history)
+    if not transcript:
+        return user_prompt
+
+    return (
+        "Continue this SMS conversation using the prior transcript below. "
+        "Do not say that you lack conversation history unless the transcript is empty.\n\n"
+        "Prior transcript (oldest first):\n"
+        f"{transcript}\n\n"
+        "Latest user message:\n"
+        f"{user_prompt}"
+    )
+
+
 async def run_swinedesk_agent(
     user_prompt: str,
     state: SwineDeskState,
@@ -147,9 +182,11 @@ async def run_swinedesk_agent(
     message_history: list[dict[str, Any]] | None = None,
 ) -> AgentRunResult[str]:
     """Route to the correct external-role agent based on state.role."""
-    _ = message_history
     deps = SwineDeskDeps(state=state)
     selected_agent = _get_role_agents().get(state.role)
     if selected_agent is None:
         raise ValueError(f"Unsupported SwineDesk SMS role: {state.role}")
-    return await selected_agent.run(user_prompt, deps=deps)
+    return await selected_agent.run(
+        _build_agent_input(user_prompt, message_history=message_history),
+        deps=deps,
+    )

@@ -132,6 +132,7 @@ async def sms_webhook(
     try:
         backend = get_backend_client()
         session = await get_or_create(phone)
+        prior_messages = list(session.messages)
         await add_message(phone, "user", inbound)
 
         actor = await backend.resolve_actor_by_phone(phone)
@@ -176,7 +177,11 @@ async def sms_webhook(
             return Response(str(twiml), media_type="text/xml")
 
         state = session.to_state()
-        result = await run_swinedesk_agent(user_prompt=inbound, state=state)
+        result = await run_swinedesk_agent(
+            user_prompt=inbound,
+            state=state,
+            message_history=prior_messages,
+        )
         reply = str(result.output).strip() or "Got your message. Please retry in a minute."
 
         await update_session_from_state(phone, state)
