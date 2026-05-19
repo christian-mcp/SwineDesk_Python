@@ -106,14 +106,25 @@ def _normalize_site_ids(raw_value: object) -> list[str]:
     return [str(raw_value)]
 
 
+def _configure_app_logging() -> None:
+    app_logger = logging.getLogger("swinedesk")
+    uvicorn_logger = logging.getLogger("uvicorn.error")
+    app_logger.setLevel(logging.INFO)
+    if uvicorn_logger.handlers:
+        app_logger.handlers = uvicorn_logger.handlers
+        app_logger.propagate = False
+
+
 @app.on_event("startup")
 async def on_startup() -> None:
+    _configure_app_logging()
     key = settings.anthropic_api_key
     logger.info(
         "ANTHROPIC_API_KEY loaded: len=%d prefix=%s",
         len(key),
         key[:12] if key else "(empty)",
     )
+    logger.info("SwineDesk SMS sender configured as %s", settings.twilio_phone_number or "(unset)")
     start_cleanup_task()
 
 

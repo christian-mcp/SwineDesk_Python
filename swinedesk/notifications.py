@@ -32,7 +32,14 @@ async def send_sms_notification(to_phone: str, message: str) -> dict[str, str | 
         return {"success": False, "error": "Twilio is not configured."}
 
     try:
-        client.messages.create(body=message, from_=from_phone, to=to_phone)
+        logger.warning("Attempting SMS notification from=%s to=%s", from_phone, to_phone)
+        twilio_message = client.messages.create(body=message, from_=from_phone, to=to_phone)
+        logger.warning(
+            "Sent SMS notification from=%s to=%s sid=%s",
+            from_phone,
+            to_phone,
+            twilio_message.sid,
+        )
         return {"success": True, "to_phone": to_phone}
     except TwilioException as exc:
         logger.exception("Failed to send SMS notification to %s", to_phone)
