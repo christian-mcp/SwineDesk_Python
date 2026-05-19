@@ -13,7 +13,6 @@ from twilio.twiml.messaging_response import MessagingResponse
 
 from swinedesk.agent import run_swinedesk_agent
 from swinedesk.backend_client import get_backend_client
-from swinedesk.notifications import send_sms_notification
 from swinedesk.session import (
     add_message,
     get_or_create,
@@ -38,19 +37,6 @@ def _chunk_message(text: str, chunk_size: int = 1500) -> list[str]:
     if len(text) <= chunk_size:
         return [text]
     return [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
-
-
-async def _send_sms_reply(phone: str, message: str) -> None:
-    """Send webhook replies through the REST API so the sender stays pinned."""
-    for chunk in _chunk_message(message, 1500):
-        result = await send_sms_notification(phone, chunk)
-        if not result.get("success"):
-            logger.warning(
-                "Failed to send SMS reply to %s error=%s",
-                phone,
-                result.get("error", "unknown"),
-            )
-            break
 
 
 def _parse_load_id_from_subject(subject: str) -> str | None:
@@ -145,17 +131,14 @@ async def health() -> JSONResponse:
 async def sms_webhook(
     body: Annotated[str | None, Form(alias="Body")] = None,
     from_phone: Annotated[str | None, Form(alias="From")] = None,
-    to_phone: Annotated[str | None, Form(alias="To")] = None,
 ) -> Response:
     twiml = MessagingResponse()
     inbound = (body or "").strip()
     phone = (from_phone or "").strip()
-    inbound_to = (to_phone or "").strip()
-    logger.info("Inbound SMS received: from=%s to=%s body=%r", phone, inbound_to, inbound)
+    logger.info("Inbound SMS received: from=%s body=%r", phone, inbound)
 
     if not inbound or not phone:
-        if phone:
-            await _send_sms_reply(phone, "Couldn't read your message. Try again.")
+        twiml.message("Couldn't read your message. Try again.")
         return Response(str(twiml), media_type="text/xml")
 
     try:
@@ -203,7 +186,7 @@ async def sms_webhook(
                 )
                 await mark_broker_alert_sent(phone, now_iso)
 
-            await _send_sms_reply(phone, UNKNOWN_PHONE_REPLY)
+            twiml.message(UNKNOWN_PHONE_REPLY)
             await add_message(phone, "assistant", UNKNOWN_PHONE_REPLY)
             return Response(str(twiml), media_type="text/xml")
 
@@ -217,12 +200,13 @@ async def sms_webhook(
 
         await update_session_from_state(phone, state)
         await add_message(phone, "assistant", reply)
-        await _send_sms_reply(phone, reply)
+
+        for chunk in _chunk_message(reply, 1500):
+            twiml.message(chunk)
 
     except Exception:
         logger.exception("SMS handler failed for phone=%s", phone)
-        if phone:
-            await _send_sms_reply(phone, "Having a technical issue. Try again in a minute.")
+        twiml.message("Having a technical issue. Try again in a minute.")
 
     return Response(str(twiml), media_type="text/xml")
 
