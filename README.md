@@ -126,6 +126,8 @@ Update `.env` with:
 - `BACKEND_API_URL`
 - `BACKEND_API_TOKEN`
 
+`BACKEND_API_TOKEN` is also used to protect the backend-triggered notification webhook on SwineDesk Python, so the Java backend should send the same bearer token when calling `/notifications/sms`.
+
 ### 3) Run server
 
 ```bash
@@ -136,8 +138,23 @@ uvicorn swinedesk.app:app --reload --port 3000
 
 - Point Twilio incoming message webhook to:
   - `https://<your-domain>/sms`
+- Backend-triggered SMS notification webhook:
+  - `https://<your-domain>/notifications/sms`
+  - Protected by `Authorization: Bearer <BACKEND_API_TOKEN>`
 - Health cert automation webhook (Make/Zapier/email parser) to:
   - `https://<your-domain>/docs/health-cert`
+
+## Backend bridge config
+
+On the Java backend, enable the SwineDesk SMS bridge with:
+
+```properties
+swinedesk.notifications.enabled=true
+swinedesk.notifications.base-url=https://<your-swinedesk-domain>
+swinedesk.notifications.token=<same value as BACKEND_API_TOKEN>
+```
+
+If `swinedesk.notifications.token` is omitted, the backend falls back to `swinedesk.api.token`.
 
 ## Implementation TODOs for next engineer
 
@@ -146,15 +163,13 @@ uvicorn swinedesk.app:app --reload --port 3000
    - all tool stub `run(...)` methods
 2. Replace role lookup endpoint stub:
    - `BackendClient.resolve_phone_role(...)`
-3. Add real Twilio send implementation in:
-   - `swinedesk/tools/notify/send_sms/tool.py`
-4. Add real SMTP send implementation in:
+3. Add real SMTP send implementation in:
    - `swinedesk/tools/notify/send_email/tool.py`
-5. Add tests:
+4. Add tests:
    - session timeout/capping behavior
    - webhook happy paths
    - each tool stub contract and error handling
-6. Add observability/logging and production error reporting.
+5. Add observability/logging and production error reporting.
 
 ## Notes on migration from current Node MVP
 
@@ -162,4 +177,3 @@ uvicorn swinedesk.app:app --reload --port 3000
 - In Python, tool-calling should drive create/update actions directly.
 - Producer/Broker role routing remains, but now role is resolved via backend API instead of env phone list.
 - SMS chunking behavior remains for long responses.
-

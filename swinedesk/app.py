@@ -7,12 +7,13 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import FastAPI, Form
+from fastapi import FastAPI, Form, Header, HTTPException
 from fastapi.responses import JSONResponse, Response
 from twilio.twiml.messaging_response import MessagingResponse
 
 from swinedesk.agent import run_swinedesk_agent
 from swinedesk.backend_client import get_backend_client
+from swinedesk.notifications import send_sms_notification
 from swinedesk.session import (
     add_message,
     get_or_create,
@@ -101,6 +102,15 @@ def _configure_app_logging() -> None:
         app_logger.propagate = False
 
 
+def _validate_backend_notification_token(authorization_header: str | None) -> None:
+    """Require the shared backend token when one is configured."""
+    if not settings.backend_api_token:
+        return
+    expected_header = f"Bearer {settings.backend_api_token}"
+    if authorization_header != expected_header:
+        raise HTTPException(status_code=401, detail="Invalid notification token")
+
+
 @app.on_event("startup")
 async def on_startup() -> None:
     _configure_app_logging()
@@ -125,6 +135,34 @@ async def health() -> JSONResponse:
     return JSONResponse(
         {"status": "SwineDesk external SMS runtime", "time": datetime.now(timezone.utc).isoformat()}
     )
+
+
+@app.post("/notifications/sms")
+async def backend_sms_notification(
+    payload: dict,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+) -> JSONResponse:
+    _validate_backend_notification_token(authorization)
+
+    to_phone = str(payload.get("to_phone", "") or "").strip()
+    message = str(payload.get("message", "") or "").strip()
+    event = payload.get("event") if isinstance(payload.get("event"), dict) else {}
+    logger.info(
+        "Outbound backend notification requested: to=%s action=%s method=%s",
+        to_phone,
+        event.get("notification_action_type"),
+        event.get("notification_method"),
+    )
+
+    if not to_phone or not message:
+        return JSONResponse(
+            {"success": False, "error": "Missing to_phone or message."},
+            status_code=400,
+        )
+
+    result = await send_sms_notification(to_phone, message)
+    status_code = 200 if result.get("success") else 502
+    return JSONResponse({"event": event, **result}, status_code=status_code)
 
 
 @app.post("/sms")
