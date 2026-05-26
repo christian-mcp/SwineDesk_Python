@@ -7,7 +7,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
-ActorRole = Literal["seller", "buyer", "freight_operator", "vet", "unknown"]
+ActorRole = Literal["seller", "buyer", "freight_operator", "vet", "broker", "unknown"]
+UserTier = Literal["cold", "warm", "known"]
 
 
 class SwineDeskState(BaseModel):
@@ -15,6 +16,7 @@ class SwineDeskState(BaseModel):
 
     phone: str = ""
     role: ActorRole = "unknown"
+    user_tier: UserTier = "known"
     session_id: str = ""
     actor_id: str = ""
     contact_id: str = ""

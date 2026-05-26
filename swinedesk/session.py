@@ -19,6 +19,8 @@ class Session:
 
     phone: str
     role: str = "unknown"
+    user_tier: str = "known"
+    session_count: int = 0
     actor_id: str = ""
     contact_id: str = ""
     company_id: str = ""
@@ -39,6 +41,7 @@ class Session:
         return SwineDeskState(
             phone=self.phone,
             role=self.role,  # type: ignore[arg-type]
+            user_tier=self.user_tier,  # type: ignore[arg-type]
             actor_id=self.actor_id,
             contact_id=self.contact_id,
             company_id=self.company_id,
@@ -56,6 +59,7 @@ class Session:
     def apply_state(self, state: SwineDeskState) -> None:
         """Persist state changes back onto the session."""
         self.role = state.role
+        self.user_tier = state.user_tier
         self.actor_id = state.actor_id
         self.contact_id = state.contact_id
         self.company_id = state.company_id
@@ -135,6 +139,8 @@ def _load_sessions_from_disk() -> None:
         _sessions[phone] = Session(
             phone=phone,
             role=str(payload.get("role", "unknown")),
+            user_tier=str(payload.get("user_tier", "known")),
+            session_count=int(payload.get("session_count", 0)),
             actor_id=str(payload.get("actor_id", "")),
             contact_id=str(payload.get("contact_id", "")),
             company_id=str(payload.get("company_id", "")),
@@ -167,11 +173,31 @@ async def get_session(phone: str) -> Session | None:
         return session
 
 
+def _compute_user_tier(session_count: int) -> str:
+    """Derive warm/cold/known tier from lifetime session count."""
+    if session_count == 0:
+        return "cold"
+    if session_count < 3:
+        return "warm"
+    return "known"
+
+
 async def create_session(phone: str, role: str = "unknown") -> Session:
-    """Create a new session for a phone."""
-    session = Session(phone=phone, role=role)
+    """Create a new session, incrementing session_count from any prior expired session."""
     async with _lock:
         _load_sessions_from_disk()
+        # Carry over session_count from a previously expired session if stored
+        prior_count = 0
+        prior = _sessions.get(phone)
+        if prior is not None:
+            prior_count = prior.session_count
+        new_count = prior_count + 1
+        session = Session(
+            phone=phone,
+            role=role,
+            session_count=new_count,
+            user_tier=_compute_user_tier(new_count),
+        )
         _sessions[phone] = session
         _save_sessions_to_disk()
     return session

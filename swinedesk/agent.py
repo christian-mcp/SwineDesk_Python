@@ -63,6 +63,8 @@ SELLER_TOOL_PATHS = COMMON_TOOL_PATHS | {
     "/tools/loads/get_health_cert_status",
     "/tools/health/get_cert_instructions",
     "/tools/issues/report_delivery_issue",
+    "/tools/reminders/set_reminder",
+    "/tools/reminders/list_reminders",
 }
 
 BUYER_TOOL_PATHS = COMMON_TOOL_PATHS | {
@@ -75,6 +77,8 @@ BUYER_TOOL_PATHS = COMMON_TOOL_PATHS | {
     "/tools/grading/submit_grading",
     "/tools/grading/get_submission_status",
     "/tools/issues/report_delivery_issue",
+    "/tools/reminders/set_reminder",
+    "/tools/reminders/list_reminders",
 }
 
 FREIGHT_TOOL_PATHS = {
@@ -83,6 +87,7 @@ FREIGHT_TOOL_PATHS = {
     "/tools/loads/get_freight_load_detail",
     "/tools/loads/confirm_freight_assignment",
     "/tools/loads/submit_freight_details",
+    "/tools/ops/submit_freight_by_text",
     "/tools/issues/report_delivery_issue",
 }
 
@@ -93,11 +98,47 @@ VET_TOOL_PATHS = {
     "/tools/health/get_vet_pending_loads",
 }
 
+BROKER_TOOL_PATHS = COMMON_TOOL_PATHS | {
+    # Market
+    "/tools/market/create_sell_listing",
+    "/tools/market/create_buy_request",
+    "/tools/market/get_my_open_requests",
+    "/tools/market/get_my_request_detail",
+    # Loads
+    "/tools/loads/list_my_loads",
+    "/tools/loads/get_my_load_detail",
+    "/tools/loads/get_driver_details",
+    "/tools/loads/get_health_cert_status",
+    "/tools/loads/get_freight_loads",
+    "/tools/loads/get_freight_load_detail",
+    "/tools/loads/confirm_freight_assignment",
+    "/tools/loads/submit_freight_details",
+    # Health
+    "/tools/health/get_cert_instructions",
+    "/tools/health/get_vet_pending_loads",
+    # Grading
+    "/tools/grading/submit_grading",
+    "/tools/grading/get_submission_status",
+    # Issues
+    "/tools/issues/report_delivery_issue",
+    # CRM
+    "/tools/crm/add_note",
+    "/tools/crm/get_history",
+    "/tools/crm/get_pending_tasks",
+    # Reminders
+    "/tools/reminders/set_reminder",
+    "/tools/reminders/list_reminders",
+    # Ops
+    "/tools/ops/send_message_to_user",
+    "/tools/ops/send_role_notification",
+}
+
 ROLE_REGISTRIES = {
     "seller": _filter_registry(ALL_CUSTOM_TOOLS, SELLER_TOOL_PATHS),
     "buyer": _filter_registry(ALL_CUSTOM_TOOLS, BUYER_TOOL_PATHS),
     "freight_operator": _filter_registry(ALL_CUSTOM_TOOLS, FREIGHT_TOOL_PATHS),
     "vet": _filter_registry(ALL_CUSTOM_TOOLS, VET_TOOL_PATHS),
+    "broker": _filter_registry(ALL_CUSTOM_TOOLS, BROKER_TOOL_PATHS),
 }
 
 

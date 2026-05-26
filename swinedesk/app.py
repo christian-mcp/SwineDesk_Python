@@ -34,6 +34,20 @@ UNKNOWN_PHONE_REPLY = (
 )
 
 
+def _strip_formatting(text: str) -> str:
+    """Remove markdown that renders as literal characters on SMS."""
+    # Bold/italic asterisks and underscores
+    text = re.sub(r"\*{1,3}(.*?)\*{1,3}", r"\1", text)
+    text = re.sub(r"_{1,2}(.*?)_{1,2}", r"\1", text)
+    # Inline code backticks
+    text = re.sub(r"`{1,3}(.*?)`{1,3}", r"\1", text)
+    # Markdown headers
+    text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
+    # Trailing spaces left by removals
+    text = re.sub(r" {2,}", " ", text)
+    return text.strip()
+
+
 def _chunk_message(text: str, chunk_size: int = 1500) -> list[str]:
     if len(text) <= chunk_size:
         return [text]
@@ -229,12 +243,26 @@ async def sms_webhook(
             return Response(str(twiml), media_type="text/xml")
 
         state = session.to_state()
+        logger.info(
+            "Running agent: role=%s tier=%s actor=%s workflow=%s",
+            resolved_role,
+            state.user_tier,
+            state.actor_id or "none",
+            state.active_workflow or "none",
+        )
         result = await run_swinedesk_agent(
             user_prompt=inbound,
             state=state,
             message_history=prior_messages,
         )
-        reply = str(result.output).strip() or "Got your message. Please retry in a minute."
+        raw_reply = str(result.output).strip() or "Got your message. Please retry in a minute."
+        reply = _strip_formatting(raw_reply)
+        logger.info(
+            "Agent reply: role=%s chars=%d tools_used=%s",
+            resolved_role,
+            len(reply),
+            getattr(result, "all_messages_json", None) and "yes" or "unknown",
+        )
 
         await update_session_from_state(phone, state)
         await add_message(phone, "assistant", reply)

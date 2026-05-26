@@ -285,6 +285,43 @@ class BackendClient:
             message = str(payload.get("message", ""))
             return await send_sms_notification(to_phone, message)
 
+    async def create_reminder(self, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return await self.post("/v1/sms/reminders", payload)
+        except httpx.HTTPError:
+            return {"success": False, "msg": "Reminder creation unavailable."}
+
+    async def list_reminders(self, phone: str) -> dict[str, Any]:
+        try:
+            return await self.get("/v1/sms/reminders", params={"phone": phone})
+        except httpx.HTTPError:
+            return {"reminders": []}
+
+    async def create_note(self, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return await self.post("/v1/sms/crm/notes", payload)
+        except httpx.HTTPError:
+            return {"success": False, "msg": "Note creation unavailable."}
+
+    async def get_user_history(self, phone: str) -> dict[str, Any]:
+        try:
+            return await self.get("/v1/query/user-history", params={"phone": phone})
+        except httpx.HTTPError:
+            return {"notes": [], "orders": [], "message_count": 0}
+
+    async def get_pending_tasks(self, phone: str) -> dict[str, Any]:
+        try:
+            return await self.get("/v1/query/pending-tasks", params={"phone": phone})
+        except httpx.HTTPError:
+            return {"tasks": []}
+
+    async def send_message_to_user(self, to_phone: str, message: str) -> dict[str, Any]:
+        payload = {"to_phone": to_phone, "message": message}
+        try:
+            return await self.post("/v1/sms/ops/send-direct", payload)
+        except httpx.HTTPError:
+            return await send_sms_notification(to_phone, message)
+
 
 _backend_client: BackendClient | None = None
 
