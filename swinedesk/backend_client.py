@@ -19,6 +19,7 @@ ROLE_ALIASES = {
     "freight": "freight_operator",
     "freight_operator": "freight_operator",
     "vet": "vet",
+    "broker": "broker",
     "unknown": "unknown",
     "producer": "seller",
 }
@@ -80,6 +81,19 @@ class BackendClient:
         }
         return {key: value for key, value in legacy.items() if value not in (None, "")}
 
+    def _to_legacy_buy_order_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Translate SMS buy-request fields into the /v1/orders/buy contract."""
+        legacy: dict[str, Any] = {
+            "phone": payload.get("phone", ""),
+            "market": payload.get("market", ""),
+            "headCount": payload.get("head_count_needed") or payload.get("head_count"),
+            "health": payload.get("health_requirement") or payload.get("health", ""),
+            "pricePerHead": payload.get("budget_target") or payload.get("price_per_head") or payload.get("pricePerHead"),
+            "weightRange": payload.get("weight_range"),
+            "deliveryDate": payload.get("delivery_start_date") or payload.get("delivery_date") or payload.get("deliveryDate"),
+        }
+        return {key: value for key, value in legacy.items() if value not in (None, "")}
+
     async def resolve_actor_by_phone(self, phone: str) -> dict[str, Any]:
         """Resolve actor role and profile context for an inbound phone number."""
         logger.info("Resolving actor by phone via primary SMS endpoint: phone=%s", phone)
@@ -136,7 +150,9 @@ class BackendClient:
         try:
             return await self.post("/v1/sms/market/buy-requests", payload)
         except httpx.HTTPError:
-            return await self.post("/v1/orders/buy", payload)
+            legacy_payload = self._to_legacy_buy_order_payload(payload)
+            logger.info("Falling back to legacy buy order payload=%s", legacy_payload)
+            return await self.post("/v1/orders/buy", legacy_payload)
 
     async def create_sell_order(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Backward-compatible wrapper for the older tool name."""
@@ -299,7 +315,7 @@ class BackendClient:
 
     async def create_note(self, payload: dict[str, Any]) -> dict[str, Any]:
         try:
-            return await self.post("/v1/sms/crm/notes", payload)
+            return await self.post("/v1/query/notes", payload)
         except httpx.HTTPError:
             return {"success": False, "msg": "Note creation unavailable."}
 
@@ -311,9 +327,25 @@ class BackendClient:
 
     async def get_pending_tasks(self, phone: str) -> dict[str, Any]:
         try:
-            return await self.get("/v1/query/pending-tasks", params={"phone": phone})
+            data = await self.get("/v1/query/pending-tasks", params={"phone": phone})
         except httpx.HTTPError:
             return {"tasks": []}
+        # Backend returns a bare JSON array of tasks; normalize to a dict.
+        if isinstance(data, list):
+            return {"tasks": data}
+        return data
+
+    async def get_open_market(self) -> dict[str, Any]:
+        try:
+            return await self.get("/v1/query/open-market")
+        except httpx.HTTPError:
+            return {"supply": [], "demand": [], "supply_count": 0, "demand_count": 0}
+
+    async def get_daily_recap(self) -> dict[str, Any]:
+        try:
+            return await self.get("/v1/query/recap")
+        except httpx.HTTPError:
+            return {"new_listings": 0, "new_requests": 0, "items": []}
 
     async def send_message_to_user(self, to_phone: str, message: str) -> dict[str, Any]:
         payload = {"to_phone": to_phone, "message": message}

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from swinedesk.backend_client import get_backend_client
@@ -13,6 +15,63 @@ from swinedesk.tool_helpers import (
     summarize_collection,
 )
 from swinedesk.tooling import Arg, Tool
+
+_VALID_HEALTH = {"CLEAN", "PEDV", "PRRS"}
+_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
+
+def _normalize_health(raw: str) -> str:
+    """Map free-text herd health to the backend enum (CLEAN/PEDV/PRRS)."""
+    text = (raw or "").strip().lower()
+    if not text:
+        return "CLEAN"
+    # A herd described as free of disease is CLEAN, even if it names PRRS/PEDV.
+    if any(token in text for token in ("neg", "free", "clean", "naive", "healthy", "not ")):
+        return "CLEAN"
+    if "pedv" in text or "ped " in text or text == "ped":
+        return "PEDV"
+    if "prrs" in text:
+        return "PRRS"
+    upper = text.upper()
+    return upper if upper in _VALID_HEALTH else "CLEAN"
+
+
+def _normalize_ship_date(raw: str) -> str | None:
+    """Coerce a ship date to ISO YYYY-MM-DD. Returns None if unparseable (field is optional)."""
+    text = (raw or "").strip()
+    if not text:
+        return None
+    if _ISO_DATE.match(text):
+        return text
+    today = datetime.now(timezone.utc).date()
+    low = text.lower()
+    # "in N days" / "N days from now" / "N days out"
+    days_match = re.search(r"(\d+)\s*days?", low)
+    if days_match and ("day" in low):
+        return (today + timedelta(days=int(days_match.group(1)))).isoformat()
+    weeks_match = re.search(r"(\d+)\s*weeks?", low)
+    if weeks_match:
+        return (today + timedelta(weeks=int(weeks_match.group(1)))).isoformat()
+    if "next week" in low:
+        return (today + timedelta(days=7)).isoformat()
+    if "next month" in low:
+        return (today + timedelta(days=30)).isoformat()
+    if "tomorrow" in low:
+        return (today + timedelta(days=1)).isoformat()
+    for idx, day in enumerate(_WEEKDAYS):
+        if day in low:
+            delta = (idx - today.weekday()) % 7 or 7
+            return (today + timedelta(days=delta)).isoformat()
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y", "%B %d", "%b %d", "%B %d %Y", "%b %d %Y"):
+        try:
+            parsed = datetime.strptime(text, fmt).date()
+            if parsed.year == 1900:
+                parsed = parsed.replace(year=today.year)
+            return parsed.isoformat()
+        except ValueError:
+            continue
+    return None
 
 
 class CreateSellListing(Tool, name="create_sell_listing"):
@@ -42,6 +101,16 @@ class CreateSellListing(Tool, name="create_sell_listing"):
         actor_id, error = require_actor_id(state)
         if error:
             return error
+
+        arguments = dict(arguments)
+        if "health" in arguments:
+            arguments["health"] = _normalize_health(str(arguments.get("health", "")))
+        if arguments.get("first_ship_date"):
+            normalized_date = _normalize_ship_date(str(arguments["first_ship_date"]))
+            if normalized_date:
+                arguments["first_ship_date"] = normalized_date
+            else:
+                arguments.pop("first_ship_date", None)
 
         payload = {"actorId": actor_id, "phone": getattr(state, "phone", ""), **arguments}
         merge_workflow_draft(state, "seller_listing", arguments)

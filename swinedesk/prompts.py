@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 
 from swinedesk.settings import settings
 from swinedesk.state import SwineDeskState
@@ -146,7 +147,9 @@ Be concise. The broker already knows the business.
 
 def _state_summary(state: SwineDeskState) -> str:
     """Build compact session context for the agent."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     payload = {
+        "today": today,
         "role": state.role,
         "actor_id": state.actor_id,
         "contact_id": state.contact_id,
@@ -159,7 +162,14 @@ def _state_summary(state: SwineDeskState) -> str:
         "known_site_ids": state.known_site_ids,
         "escalation_flags": state.escalation_flags,
     }
-    return f"Current session context:\n{json.dumps(payload, ensure_ascii=True)}"
+    rules = (
+        "Data formatting rules when calling tools: all dates MUST be ISO YYYY-MM-DD "
+        f"(today is {today} — compute relative dates like '10 days out' yourself). "
+        "Health status MUST be exactly one of CLEAN, PEDV, or PRRS — a herd described as "
+        "PRRS-negative / clean / naive / healthy is CLEAN; only use PRRS or PEDV if the "
+        "herd is positive for that disease."
+    )
+    return f"Current session context:\n{json.dumps(payload, ensure_ascii=True)}\n\n{rules}"
 
 
 def _tier_context(user_tier: str) -> str:

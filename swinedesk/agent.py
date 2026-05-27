@@ -104,6 +104,8 @@ BROKER_TOOL_PATHS = COMMON_TOOL_PATHS | {
     "/tools/market/create_buy_request",
     "/tools/market/get_my_open_requests",
     "/tools/market/get_my_request_detail",
+    "/tools/market/get_open_market",
+    "/tools/crm/get_daily_recap",
     # Loads
     "/tools/loads/list_my_loads",
     "/tools/loads/get_my_load_detail",
