@@ -35,6 +35,14 @@ class GetMyOpenRequests(Tool, name="get_my_open_requests"):
             request_ids = response.get("request_ids") or []
             for request_id in request_ids:
                 state.remember_order(str(request_id))
+
+        # External parties (seller / buyer) never see the internal "TRADED" label.
+        # Surface it as "CONFIRMED" instead so it reads like a confirmed sale.
+        requests = response.get("requests") or []
+        for req in requests:
+            if isinstance(req, dict) and str(req.get("status", "")).upper() == "TRADED":
+                req["status"] = "CONFIRMED"
+
         return {
             "result": "Loaded open requests.",
             **response,

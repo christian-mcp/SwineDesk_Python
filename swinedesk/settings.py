@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     partner_email: str = Field(default="", alias="PARTNER_EMAIL")
     partner_phone: str = Field(default="", alias="PARTNER_PHONE")
     broker_alert_phone: str = Field(default="", alias="BROKER_ALERT_PHONE")
+    vet_notify_phone: str = Field(default="", alias="VET_NOTIFY_PHONE")
+    freight_notify_phone: str = Field(default="", alias="FREIGHT_NOTIFY_PHONE")
     docs_email: str = Field(default="docs@elmpork.com", alias="DOCS_EMAIL")
 
     smtp_host: str = Field(default="", alias="SMTP_HOST")

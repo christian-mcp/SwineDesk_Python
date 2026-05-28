@@ -7,6 +7,7 @@ from typing import Any
 
 from swinedesk.backend_client import get_backend_client
 from swinedesk.notifications import send_sms_notification
+from swinedesk.settings import settings
 from swinedesk.tool_helpers import ensure_role
 from swinedesk.tooling import Arg, Tool
 
@@ -32,6 +33,28 @@ async def _notify_party(phone: str | None, first_name: str | None, side: str, or
         await send_sms_notification(phone, msg)
     except Exception:
         logger.exception("Failed to notify %s about match", phone)
+
+
+async def _notify_ops_role(phone: str, role: str, order_id: str, head: object, market: str) -> None:
+    """Heads-up SMS to the vet or freight default phone when a new deal pairs."""
+    if not phone:
+        return
+    pretty_market = market.lower().replace("_", " ") if market else "pigs"
+    if role == "vet":
+        msg = (
+            f"Heads up from Elmport. New deal {order_id} just paired, "
+            f"{head} {pretty_market}. A health cert will be needed in the next couple weeks. "
+            "We'll text the load ID once it's scheduled."
+        )
+    else:
+        msg = (
+            f"Heads up from Elmport. New deal {order_id} just paired, "
+            f"{head} {pretty_market}. Expect pickup and delivery details once the load is scheduled."
+        )
+    try:
+        await send_sms_notification(phone, msg)
+    except Exception:
+        logger.exception("Failed to notify %s phone %s about match", role, phone)
 
 
 class MatchOrders(Tool, name="match_orders"):
@@ -79,6 +102,12 @@ class MatchOrders(Tool, name="match_orders"):
             "BUY",
             response.get("retired_order_id") or buy_id,
         )
+
+        traded_ref = response.get("traded_order_id") or sell_id
+        head_count = response.get("head") or "?"
+        market_label = response.get("market") or ""
+        await _notify_ops_role(settings.vet_notify_phone, "vet", traded_ref, head_count, market_label)
+        await _notify_ops_role(settings.freight_notify_phone, "freight", traded_ref, head_count, market_label)
 
         head = response.get("head") or "?"
         market = str(response.get("market") or "").lower().replace("_", " ") or "pigs"
