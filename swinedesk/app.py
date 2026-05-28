@@ -44,6 +44,14 @@ def _strip_formatting(text: str) -> str:
     text = re.sub(r"`{1,3}(.*?)`{1,3}", r"\1", text)
     # Markdown headers
     text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
+    # Em/en dashes render badly on SMS and read awkwardly. Replace separator
+    # usages (with surrounding spaces) with a comma. Bare em/en dashes also drop
+    # to comma — we never want them in outbound SMS. Compound hyphens like
+    # "12-14 lbs" stay intact since they use the regular "-" character.
+    text = re.sub(r"\s*[—–]\s*", ", ", text)
+    # Curly quotes to straight quotes
+    text = (text.replace("‘", "'").replace("’", "'")
+                .replace("“", '"').replace("”", '"'))
     # Trailing spaces left by removals
     text = re.sub(r" {2,}", " ", text)
     return text.strip()
