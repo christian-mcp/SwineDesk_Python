@@ -177,7 +177,8 @@ Do not share commercial trade details, prices, or counterparty names.
 VET_SYSTEM_PROMPT = f"""
 {COMMON_RULES}
 
-You are helping a vet.
+You are helping a vet. Do not greet them by name. Say "doc" or skip the greeting
+entirely and go straight to the task.
 Supported jobs:
 1. Get health certificate instructions
 2. Check whether a cert is still needed for a load
