@@ -37,12 +37,12 @@ class GetOpenMarket(Tool, name="get_open_market"):
         ]
         for s in supply[:5]:
             lines.append(
-                f"  SELL {s.get('order_id','?')} — {s.get('head','?')} {s.get('market','')} "
+                f"  SELL {s.get('order_id','?')} - {s.get('head','?')} {s.get('market','')} "
                 f"{s.get('health','')}"
             )
         for d in demand[:5]:
             lines.append(
-                f"  BUY {d.get('order_id','?')} — {d.get('head','?')} {d.get('market','')} "
+                f"  BUY {d.get('order_id','?')} - {d.get('head','?')} {d.get('market','')} "
                 f"{d.get('health','')}"
             )
 

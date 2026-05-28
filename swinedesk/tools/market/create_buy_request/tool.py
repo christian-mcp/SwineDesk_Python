@@ -10,6 +10,7 @@ from swinedesk.backend_client import get_backend_client
 from swinedesk.tool_helpers import (
     ensure_role,
     merge_workflow_draft,
+    notify_broker_order_created,
     remember_request,
     require_actor_id,
     summarize_collection,
@@ -120,11 +121,15 @@ class CreateBuyRequest(Tool, name="create_buy_request"):
             or ""
         )
         remember_request(state, request_id)
+        await notify_broker_order_created("buy", state, arguments, request_id)
+        confirmation = (
+            f"Buy request is in (ref {request_id}). Elmport will be in touch today to talk this through."
+            if request_id
+            else "Buy request is in. Elmport will be in touch today to talk this through."
+        )
         return {
-            "result": response.get(
-                "msg",
-                summarize_collection("Created buy request", {"request_id": request_id}),
-            ),
+            "result": confirmation,
             "request_id": request_id,
-            **response,
+            "backend_msg": response.get("msg"),
+            **{k: v for k, v in response.items() if k != "msg"},
         }

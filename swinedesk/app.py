@@ -14,6 +14,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 from swinedesk.agent import run_swinedesk_agent
 from swinedesk.backend_client import get_backend_client
 from swinedesk.notifications import send_sms_notification
+from swinedesk.phone_region import infer_region_from_phone
 from swinedesk.session import (
     add_message,
     get_or_create,
@@ -89,9 +90,11 @@ def _should_send_broker_alert(last_sent_iso: str | None) -> bool:
 
 def _build_broker_alert(phone: str, inbound: str, intent: str) -> str:
     timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    region = infer_region_from_phone(phone) or "unknown"
     return (
         "New SMS lead\n"
         f"Phone: {phone}\n"
+        f"Region: {region}\n"
         f"Intent: {intent}\n"
         f"At: {timestamp}\n"
         f"Msg: {inbound}"

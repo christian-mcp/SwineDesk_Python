@@ -347,6 +347,14 @@ class BackendClient:
         except httpx.HTTPError:
             return {"new_listings": 0, "new_requests": 0, "items": []}
 
+    async def match_orders(self, buy_order_id: str, sell_order_id: str) -> dict[str, Any]:
+        payload = {"buy_order_id": buy_order_id, "sell_order_id": sell_order_id}
+        return await self.post("/v1/query/match-orders", payload)
+
+    async def reject_order(self, order_id: str, reason: str = "") -> dict[str, Any]:
+        payload = {"order_id": order_id, "reason": reason}
+        return await self.post("/v1/query/reject-order", payload)
+
     async def send_message_to_user(self, to_phone: str, message: str) -> dict[str, Any]:
         payload = {"to_phone": to_phone, "message": message}
         try:

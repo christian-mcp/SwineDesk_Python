@@ -10,6 +10,7 @@ from swinedesk.backend_client import get_backend_client
 from swinedesk.tool_helpers import (
     ensure_role,
     merge_workflow_draft,
+    notify_broker_order_created,
     remember_request,
     require_actor_id,
     summarize_collection,
@@ -124,11 +125,15 @@ class CreateSellListing(Tool, name="create_sell_listing"):
             or ""
         )
         remember_request(state, request_id)
+        await notify_broker_order_created("sell", state, arguments, request_id)
+        confirmation = (
+            f"Sell listing is in (ref {request_id}). Elmport will be in touch today to talk this through."
+            if request_id
+            else "Sell listing is in. Elmport will be in touch today to talk this through."
+        )
         return {
-            "result": response.get(
-                "msg",
-                summarize_collection("Created sell listing", {"request_id": request_id}),
-            ),
+            "result": confirmation,
             "request_id": request_id,
-            **response,
+            "backend_msg": response.get("msg"),
+            **{k: v for k, v in response.items() if k != "msg"},
         }
