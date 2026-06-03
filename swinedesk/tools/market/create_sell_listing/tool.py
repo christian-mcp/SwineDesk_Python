@@ -126,10 +126,10 @@ class CreateSellListing(Tool, name="create_sell_listing"):
         )
         remember_request(state, request_id)
         await notify_broker_order_created("sell", state, arguments, request_id)
+        ref = f" (ref {request_id})" if request_id else ""
         confirmation = (
-            f"Sell listing is in (ref {request_id}). Elmport will be in touch today to talk this through."
-            if request_id
-            else "Sell listing is in. Elmport will be in touch today to talk this through."
+            f"Ok got it{ref}. Brian will give you a call shortly to talk this through "
+            "and find you a buyer."
         )
         return {
             "result": confirmation,

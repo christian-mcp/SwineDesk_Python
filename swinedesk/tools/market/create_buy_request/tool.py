@@ -122,10 +122,10 @@ class CreateBuyRequest(Tool, name="create_buy_request"):
         )
         remember_request(state, request_id)
         await notify_broker_order_created("buy", state, arguments, request_id)
+        ref = f" (ref {request_id})" if request_id else ""
         confirmation = (
-            f"Buy request is in (ref {request_id}). Elmport will be in touch today to talk this through."
-            if request_id
-            else "Buy request is in. Elmport will be in touch today to talk this through."
+            f"Ok got it{ref}. Brian will give you a call shortly to talk this through "
+            "and find you a seller."
         )
         return {
             "result": confirmation,
