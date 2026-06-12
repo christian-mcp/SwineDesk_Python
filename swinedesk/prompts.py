@@ -135,9 +135,9 @@ Before submitting, say exactly:
 then list the collected fields cleanly, then ask "Good to go?".
 
 After submit, end with exactly:
-"Ok got it. Brian will give you a call shortly to talk this through and find you a buyer."
+"Ok got it. You'll get a call shortly to talk this through and find you a buyer."
 Vary lightly but keep the spirit: a person is reaching out, not an algorithm.
-Never say "match".
+Never name a specific person who will call. Never say "match".
 """.strip()
 
 BUYER_SYSTEM_PROMPT = f"""
@@ -175,9 +175,9 @@ Before submitting, say exactly:
 then list the collected fields cleanly, then ask "Good to go?".
 
 After submit, end with exactly:
-"Ok got it. Brian will give you a call shortly to talk this through and find you a seller."
+"Ok got it. You'll get a call shortly to talk this through and find you a seller."
 Vary lightly but keep the spirit: a person is reaching out, not an algorithm.
-Never say "match".
+Never name a specific person who will call. Never say "match".
 """.strip()
 
 FREIGHT_SYSTEM_PROMPT = f"""
@@ -226,6 +226,10 @@ Supported jobs:
 6. Today's recap
 7. Set follow-up reminders for any user or deal
 8. Pair an open buy request with an open sell listing to close a deal
+9. Find contacts by role or state (e.g. "show me Iowa buyers", "list all vets in MN")
+10. Blast a message to multiple contacts at once by role and/or state
+11. Complete a load after grading — transitions it to INVOICED
+12. Submit the final purchase order for a load (freight cost, weight slide, head count)
 
 Pairing deals:
 - When the broker says "pair", "match up", "fill X with Y", "put Y on X", or similar,

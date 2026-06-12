@@ -347,6 +347,23 @@ class BackendClient:
         except httpx.HTTPError:
             return {"new_listings": 0, "new_requests": 0, "items": []}
 
+    async def complete_load(self, load_id: str) -> dict[str, Any]:
+        return await self.post(f"/v1/query/loads/{load_id}/complete")
+
+    async def record_purchase_order(self, load_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self.post(f"/v1/query/loads/{load_id}/purchase-order", payload)
+
+    async def list_contacts(self, role: str | None = None, state: str | None = None) -> dict[str, Any]:
+        params: dict[str, Any] = {}
+        if role:
+            params["role"] = role
+        if state:
+            params["state"] = state
+        try:
+            return await self.get("/v1/query/contacts", params=params)
+        except httpx.HTTPError:
+            return {"count": 0, "contacts": []}
+
     async def match_orders(self, buy_order_id: str, sell_order_id: str) -> dict[str, Any]:
         payload = {"buy_order_id": buy_order_id, "sell_order_id": sell_order_id}
         return await self.post("/v1/query/match-orders", payload)

@@ -36,9 +36,12 @@ class Settings(BaseSettings):
     partner_email: str = Field(default="", alias="PARTNER_EMAIL")
     partner_phone: str = Field(default="", alias="PARTNER_PHONE")
     broker_alert_phone: str = Field(default="", alias="BROKER_ALERT_PHONE")
+    broker_sms_phones: str = Field(default="", alias="BROKER_SMS_PHONES")
     vet_notify_phone: str = Field(default="", alias="VET_NOTIFY_PHONE")
     freight_notify_phone: str = Field(default="", alias="FREIGHT_NOTIFY_PHONE")
     docs_email: str = Field(default="docs@elmpork.com", alias="DOCS_EMAIL")
+
+    hellosign_api_key: str = Field(default="", alias="HELLOSIGN_API_KEY")
 
     smtp_host: str = Field(default="", alias="SMTP_HOST")
     smtp_port: int = Field(default=587, alias="SMTP_PORT")
@@ -62,6 +65,16 @@ class Settings(BaseSettings):
     def effective_broker_alert_phone(self) -> str:
         """Broker alert phone with fallback to partner phone."""
         return self.broker_alert_phone or self.partner_phone
+
+    @property
+    def broker_sms_phone_set(self) -> set[str]:
+        """Digit-only phone numbers that should resolve to the broker role over SMS."""
+        out: set[str] = set()
+        for entry in self.broker_sms_phones.split(","):
+            digits = "".join(ch for ch in entry if ch.isdigit())
+            if digits:
+                out.add(digits)
+        return out
 
 
 settings = Settings()

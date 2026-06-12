@@ -107,6 +107,8 @@ BROKER_TOOL_PATHS = COMMON_TOOL_PATHS | {
     "/tools/market/get_open_market",
     "/tools/market/match_orders",
     "/tools/market/reject_order",
+    # Orders
+    "/tools/orders/submit_purchase_order",
     "/tools/crm/get_daily_recap",
     # Loads
     "/tools/loads/list_my_loads",

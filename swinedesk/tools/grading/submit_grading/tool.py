@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from swinedesk.backend_client import get_backend_client
+from swinedesk.hellosign import send_grade_sheet
 from swinedesk.tool_helpers import ensure_role, merge_workflow_draft, remember_load, require_actor_id
 from swinedesk.tooling import Arg, Tool
+
+logger = logging.getLogger(__name__)
 
 
 class SubmitGrading(Tool, name="submit_grading"):
@@ -62,6 +66,28 @@ class SubmitGrading(Tool, name="submit_grading"):
                 if state is not None:
                     state.add_escalation_flag(f"grading-review:{load_id}")
                 break
+
+        try:
+            profile = await backend.get_actor_profile(actor_id, "buyer")
+            buyer_email = str(profile.get("email") or "").strip()
+            if buyer_email:
+                gs = await send_grade_sheet(
+                    load_id=load_id,
+                    head_count_received=arguments.get("head_count_received", "?"),
+                    grader_name=str(arguments.get("grader_name") or ""),
+                    grading_date=str(arguments.get("grading_date") or ""),
+                    market=str(response.get("market") or profile.get("market") or ""),
+                    buyer_name=str(profile.get("first_name") or profile.get("name") or ""),
+                    buyer_email=buyer_email,
+                    buyer_company=str(profile.get("company") or ""),
+                    buyer_phone=str(profile.get("phone") or ""),
+                    site=str(response.get("site_name") or response.get("destination") or ""),
+                    writeoffs=arguments,
+                )
+                if not gs.get("success"):
+                    logger.warning("Grade sheet email failed for load %s: %s", load_id, gs.get("error"))
+        except Exception:
+            logger.exception("Failed to send grade sheet email for load %s", load_id)
 
         return {
             "result": response.get("msg", f"Submitted grading for {load_id}."),

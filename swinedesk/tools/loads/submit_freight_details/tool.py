@@ -20,6 +20,7 @@ class SubmitFreightDetails(Tool, name="submit_freight_details"):
         "plate": Arg("License plate"),
         "pickup_eta": Arg("Pickup ETA", optional=True),
         "delivery_eta": Arg("Delivery ETA", optional=True),
+        "scale_ticket_url": Arg("URL of the scale ticket photo or file", optional=True),
     }
 
     async def run(self, arguments: dict[str, Any], state: Any) -> dict[str, Any]:

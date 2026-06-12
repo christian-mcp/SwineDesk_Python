@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from swinedesk.backend_client import get_backend_client
+from swinedesk.hellosign import send_deal_confirmation
 from swinedesk.notifications import send_sms_notification
 from swinedesk.settings import settings
 from swinedesk.tool_helpers import ensure_role
@@ -33,6 +34,51 @@ async def _notify_party(phone: str | None, first_name: str | None, side: str, or
         await send_sms_notification(phone, msg)
     except Exception:
         logger.exception("Failed to notify %s about match", phone)
+
+
+def _deal_terms_from_response(response: dict) -> dict[str, Any]:
+    """Best-effort deal-term fields for the confirmation email; missing keys are omitted.
+    (Backend payload keys may need adjustment once confirmed.)"""
+    def first(*keys: str) -> str:
+        for k in keys:
+            v = response.get(k)
+            if v not in (None, "", []):
+                return str(v)
+        return ""
+
+    return {
+        "deal_date": first("deal_date", "traded_at", "date"),
+        "price": first("price_per_head", "price", "price_target"),
+        "loads": first("loads", "load_count", "num_loads"),
+        "health": first("health", "health_status"),
+        "vaccine": first("vaccine", "vaccines"),
+        "weight_slide": first("weight_slide"),
+        "regrade": first("regrade", "re_grade"),
+        "source_farms": first("source_farms", "source_farm", "source_site"),
+    }
+
+
+async def _send_deal_confirmation_emails(response: dict) -> None:
+    order_id = response.get("traded_order_id", "")
+    head = response.get("head") or "?"
+    market = str(response.get("market") or "").lower().replace("_", " ") or "pigs"
+    terms = {k: v for k, v in _deal_terms_from_response(response).items() if v}
+    result = await send_deal_confirmation(
+        order_id=order_id,
+        head=head,
+        market=market,
+        seller_name=response.get("seller_first_name") or response.get("seller_company") or "Seller",
+        seller_email=response.get("seller_email") or "",
+        buyer_name=response.get("buyer_first_name") or response.get("buyer_company") or "Buyer",
+        buyer_email=response.get("buyer_email") or "",
+        seller_company=response.get("seller_company") or "",
+        seller_phone=response.get("seller_phone") or "",
+        buyer_company=response.get("buyer_company") or "",
+        buyer_phone=response.get("buyer_phone") or "",
+        terms=terms,
+    )
+    if not result.get("success"):
+        logger.warning("Deal confirmation HelloSign failed for %s: %s", order_id, result.get("error"))
 
 
 async def _notify_ops_role(phone: str, role: str, order_id: str, head: object, market: str) -> None:
@@ -102,6 +148,8 @@ class MatchOrders(Tool, name="match_orders"):
             "BUY",
             response.get("retired_order_id") or buy_id,
         )
+
+        await _send_deal_confirmation_emails(response)
 
         traded_ref = response.get("traded_order_id") or sell_id
         head_count = response.get("head") or "?"

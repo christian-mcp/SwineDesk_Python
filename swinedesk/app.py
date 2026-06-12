@@ -109,6 +109,12 @@ def _build_broker_alert(phone: str, inbound: str, intent: str) -> str:
     )
 
 
+def _is_broker_phone(phone: str) -> bool:
+    """True if this phone is on the broker SMS allowlist (BROKER_SMS_PHONES)."""
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    return bool(digits) and digits in settings.broker_sms_phone_set
+
+
 def _normalize_site_ids(raw_value: object) -> list[str]:
     """Normalize site identifiers from backend payloads into a list of strings."""
     if isinstance(raw_value, list):
@@ -212,6 +218,11 @@ async def sms_webhook(
 
         actor = await backend.resolve_actor_by_phone(phone)
         resolved_role = str(actor.get("role", "unknown"))
+        # Internal broker over SMS: a phone on the allowlist always resolves to broker,
+        # regardless of what the backend phonebook says.
+        if _is_broker_phone(phone):
+            resolved_role = "broker"
+            actor = {**actor, "role": "broker"}
         logger.info("Resolved inbound phone=%s to role=%s actor=%s", phone, resolved_role, actor)
         actor_updates = {
             "role": resolved_role,
