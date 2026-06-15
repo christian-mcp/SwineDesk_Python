@@ -57,6 +57,7 @@ SELLER_TOOL_PATHS = COMMON_TOOL_PATHS | {
     "/tools/market/create_sell_listing",
     "/tools/market/get_my_open_requests",
     "/tools/market/get_my_request_detail",
+    "/tools/market/respond_to_price_offer",
     "/tools/loads/list_my_loads",
     "/tools/loads/get_my_load_detail",
     "/tools/loads/get_driver_details",
@@ -71,6 +72,7 @@ BUYER_TOOL_PATHS = COMMON_TOOL_PATHS | {
     "/tools/market/create_buy_request",
     "/tools/market/get_my_open_requests",
     "/tools/market/get_my_request_detail",
+    "/tools/market/respond_to_price_offer",
     "/tools/loads/list_my_loads",
     "/tools/loads/get_my_load_detail",
     "/tools/loads/get_driver_details",
@@ -107,6 +109,7 @@ BROKER_TOOL_PATHS = COMMON_TOOL_PATHS | {
     "/tools/market/get_open_market",
     "/tools/market/match_orders",
     "/tools/market/reject_order",
+    "/tools/market/propose_price",
     # Orders
     "/tools/orders/submit_purchase_order",
     "/tools/crm/get_daily_recap",
@@ -131,12 +134,14 @@ BROKER_TOOL_PATHS = COMMON_TOOL_PATHS | {
     "/tools/crm/add_note",
     "/tools/crm/get_history",
     "/tools/crm/get_pending_tasks",
+    "/tools/crm/find_contacts",
     # Reminders
     "/tools/reminders/set_reminder",
     "/tools/reminders/list_reminders",
     # Ops
     "/tools/ops/send_message_to_user",
     "/tools/ops/send_role_notification",
+    "/tools/ops/blast_message",
 }
 
 ROLE_REGISTRIES = {

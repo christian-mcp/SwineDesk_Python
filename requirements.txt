@@ -8,3 +8,4 @@ python-multipart>=0.0.9
 pydantic-ai>=0.0.20
 fpdf2>=2.8.0
 pypdf>=4.0.0
+tzdata>=2024.1

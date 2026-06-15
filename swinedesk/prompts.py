@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from swinedesk.settings import settings
 from swinedesk.state import SwineDeskState
@@ -230,6 +231,21 @@ Supported jobs:
 10. Blast a message to multiple contacts at once by role and/or state
 11. Complete a load after grading — transitions it to INVOICED
 12. Submit the final purchase order for a load (freight cost, weight slide, head count)
+13. Ask a seller or buyer whether they'll accept a price, and update their order if they agree
+
+Proposing a price to a seller/buyer:
+- When Brian says "ask JP if he'd take 85", "see if Hector will do 60", "offer the
+  Iowa seller 88", resolve the person and their open order first via get_open_market
+  (it gives order_id, phone, side, and their current target_price), then call
+  propose_price with to_phone, order_id, proposed_price, side, current_price, and a
+  short label like "2,400 feeder pigs".
+- propose_price only sends the question. The price is updated automatically ONLY if the
+  person texts back and accepts. Do NOT update the price yourself and do not call
+  match_orders as part of this.
+- After calling it, tell Brian you've asked and you'll relay the answer. When the person
+  replies, Brian gets a separate text: accepted (price updated), countered (a new number,
+  nothing changed), or passed.
+- If multiple orders could match the person, ask Brian which one rather than guessing.
 
 Pairing deals:
 - When the broker says "pair", "match up", "fill X with Y", "put Y on X", or similar,
@@ -266,9 +282,18 @@ Be concise. The broker already knows the business.
 
 def _state_summary(state: SwineDeskState) -> str:
     """Build compact session context for the agent."""
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    try:
+        local_tz = ZoneInfo(settings.daily_summary_timezone)
+        tz_label = settings.daily_summary_timezone
+    except Exception:
+        local_tz = timezone.utc
+        tz_label = "UTC"
+    now_local = datetime.now(local_tz)
+    today = now_local.strftime("%Y-%m-%d")
+    now_label = now_local.strftime("%Y-%m-%d %H:%M %Z")
     payload = {
         "today": today,
+        "now": now_label,
         "role": state.role,
         "actor_id": state.actor_id,
         "contact_id": state.contact_id,
@@ -281,13 +306,37 @@ def _state_summary(state: SwineDeskState) -> str:
         "known_site_ids": state.known_site_ids,
         "escalation_flags": state.escalation_flags,
     }
+    offer_rule = ""
+    if state.pending_offer:
+        po = state.pending_offer
+        payload["pending_price_offer"] = {
+            "order_id": po.get("order_id"),
+            "proposed_price": po.get("proposed_price"),
+            "current_price": po.get("current_price"),
+            "label": po.get("label"),
+        }
+        offer_rule = (
+            " IMPORTANT: ELM has an open price offer to this user (see pending_price_offer): "
+            f"we asked if they'd take {po.get('proposed_price')} on order {po.get('order_id')}. "
+            "If their latest message answers that offer, call respond_to_price_offer with "
+            "decision=accept (they agree), decline (they pass), or counter with counter_price "
+            "(they name a different number). Never change the price yourself; the tool does it, "
+            "and only on accept. If their message is clearly about something else, handle that "
+            "instead and leave the offer open."
+        )
     rules = (
         "Data formatting rules when calling tools: all dates MUST be ISO YYYY-MM-DD "
-        f"(today is {today} — compute relative dates like '10 days out' or 'first week of June' yourself). "
+        f"(today is {today} in {tz_label}, current local time is {now_label} — compute relative dates "
+        "like '10 days out' or 'first week of June' yourself). "
+        "For set_reminder specifically: pass short relative times the way the user said them "
+        "('in 2 minutes', 'in 3 hours', 'in 2 days') straight into remind_at — the tool resolves "
+        "them to the exact time. Use an ISO-8601 datetime or YYYY-MM-DD only for absolute times. "
+        "Reminders support minute-level precision; do not round 'in 2 minutes' up to a day. "
         "Health status MUST be exactly one of CLEAN, PEDV, or PRRS — a herd described as "
         "PRRS-negative / clean / naive / healthy is CLEAN; only use PRRS or PEDV if the "
         "herd is positive for that disease. "
         "Market MUST be exactly WEAN_PIGS or FEEDER_PIGS."
+        + offer_rule
     )
     return f"Current session context:\n{json.dumps(payload, ensure_ascii=True)}\n\n{rules}"
 

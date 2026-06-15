@@ -276,9 +276,15 @@ async def cleanup_expired_sessions_once() -> int:
 
 
 async def _cleanup_loop() -> None:
+    # Imported lazily to keep the session store decoupled from these stores.
+    from swinedesk.negotiations import purge_resolved_offers
+    from swinedesk.reminders import purge_sent_reminders
+
     while True:
         await asyncio.sleep(_cleanup_interval_seconds())
         await cleanup_expired_sessions_once()
+        await purge_sent_reminders()
+        await purge_resolved_offers()
 
 
 def start_cleanup_task() -> None:

@@ -13,7 +13,10 @@ from twilio.twiml.messaging_response import MessagingResponse
 
 from swinedesk.agent import run_swinedesk_agent
 from swinedesk.backend_client import get_backend_client
+from swinedesk.daily_summary import start_daily_summary_task
+from swinedesk.negotiations import get_pending_offer_for_phone
 from swinedesk.notifications import send_sms_notification
+from swinedesk.reminders import start_reminder_scheduler
 from swinedesk.phone_region import infer_region_from_phone
 from swinedesk.session import (
     add_message,
@@ -153,6 +156,8 @@ async def on_startup() -> None:
     )
     logger.info("SwineDesk SMS sender configured as %s", settings.twilio_phone_number or "(unset)")
     start_cleanup_task()
+    start_daily_summary_task()
+    start_reminder_scheduler()
 
 
 @app.on_event("shutdown")
@@ -265,6 +270,10 @@ async def sms_webhook(
             return Response(str(twiml), media_type="text/xml")
 
         state = session.to_state()
+        pending_offer = await get_pending_offer_for_phone(phone)
+        if pending_offer:
+            state.pending_offer = pending_offer
+            logger.info("Inbound phone=%s has pending price offer %s", phone, pending_offer.get("id"))
         logger.info(
             "Running agent: role=%s tier=%s actor=%s workflow=%s",
             resolved_role,

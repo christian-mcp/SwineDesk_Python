@@ -56,15 +56,38 @@ class Settings(BaseSettings):
     broker_alert_throttle_minutes: int = Field(
         default=30, alias="BROKER_ALERT_THROTTLE_MINUTES"
     )
+
+    daily_summary_enabled: bool = Field(default=True, alias="DAILY_SUMMARY_ENABLED")
+    daily_summary_hour: int = Field(default=9, alias="DAILY_SUMMARY_HOUR")
+    daily_summary_minute: int = Field(default=0, alias="DAILY_SUMMARY_MINUTE")
+    daily_summary_timezone: str = Field(
+        default="America/Mexico_City", alias="DAILY_SUMMARY_TIMEZONE"
+    )
+    daily_summary_phone: str = Field(default="", alias="DAILY_SUMMARY_PHONE")
     session_store_path: Path = Field(
         default=DEFAULT_RUNTIME_DIR / "sessions.json",
         alias="SESSION_STORE_PATH",
+    )
+    reminder_store_path: Path = Field(
+        default=DEFAULT_RUNTIME_DIR / "reminders.json",
+        alias="REMINDER_STORE_PATH",
+    )
+    reminder_poll_seconds: int = Field(default=30, alias="REMINDER_POLL_SECONDS")
+    reminder_retention_days: int = Field(default=7, alias="REMINDER_RETENTION_DAYS")
+    negotiation_store_path: Path = Field(
+        default=DEFAULT_RUNTIME_DIR / "negotiations.json",
+        alias="NEGOTIATION_STORE_PATH",
     )
 
     @property
     def effective_broker_alert_phone(self) -> str:
         """Broker alert phone with fallback to partner phone."""
         return self.broker_alert_phone or self.partner_phone
+
+    @property
+    def daily_summary_recipient(self) -> str:
+        """Phone for the scheduled daily summary, falling back to the broker alert phone."""
+        return self.daily_summary_phone or self.effective_broker_alert_phone
 
     @property
     def broker_sms_phone_set(self) -> set[str]:

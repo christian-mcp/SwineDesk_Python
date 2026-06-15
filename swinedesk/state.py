@@ -30,6 +30,9 @@ class SwineDeskState(BaseModel):
     known_site_ids: list[str] = Field(default_factory=list)
     last_broker_alert_at: str | None = None
     escalation_flags: list[str] = Field(default_factory=list)
+    # Transient: a pending broker price offer addressed to this phone, if any.
+    # Populated per-inbound from the negotiation store; never persisted to session.
+    pending_offer: dict[str, Any] | None = None
 
     def merge_draft(self, values: dict[str, Any]) -> None:
         """Merge draft workflow data into state."""

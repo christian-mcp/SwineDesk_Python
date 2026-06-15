@@ -372,6 +372,17 @@ class BackendClient:
         payload = {"order_id": order_id, "reason": reason}
         return await self.post("/v1/query/reject-order", payload)
 
+    async def update_order_price(
+        self, order_id: str, price: float, side: str = ""
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {"price": price}
+        if side:
+            payload["side"] = side
+        try:
+            return await self.post(f"/v1/query/orders/{order_id}/price", payload)
+        except httpx.HTTPError as exc:
+            return {"success": False, "error": f"Price update unavailable: {exc}"}
+
     async def send_message_to_user(self, to_phone: str, message: str) -> dict[str, Any]:
         payload = {"to_phone": to_phone, "message": message}
         try:

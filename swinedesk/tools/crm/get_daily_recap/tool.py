@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from swinedesk.backend_client import get_backend_client
+from swinedesk.daily_summary import build_recap_message
 from swinedesk.tool_helpers import ensure_role
 from swinedesk.tooling import Arg, Tool
 
@@ -27,10 +28,4 @@ class GetDailyRecap(Tool, name="get_daily_recap"):
         backend = get_backend_client()
         response = await backend.get_daily_recap()
 
-        lines: list[str] = [
-            f"Recap for {response.get('date','today')}:",
-            f"  New listings: {response.get('new_listings', 0)} ({response.get('head_listed', 0)} head)",
-            f"  New requests: {response.get('new_requests', 0)} ({response.get('head_requested', 0)} head)",
-            f"  Pending tasks: {response.get('pending_tasks', 0)}",
-        ]
-        return {"result": "\n".join(lines), **response}
+        return {"result": build_recap_message(response), **response}
