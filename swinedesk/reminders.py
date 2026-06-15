@@ -42,6 +42,14 @@ _UNIT_SECONDS = {
 }
 
 
+def _format_reminder_sms(message: str) -> str:
+    """Prefix the outbound reminder with 'Reminder:' unless it already leads with it."""
+    text = (message or "").strip()
+    if text.lower().startswith("reminder"):
+        return text
+    return f"Reminder: {text}"
+
+
 def _local_tz() -> ZoneInfo:
     """Broker-facing timezone, shared with the daily summary."""
     try:
@@ -163,7 +171,7 @@ async def _fire_due_reminders() -> int:
         ]
     sent = 0
     for record in due:
-        result = await send_sms_notification(record["to_phone"], record["message"])
+        result = await send_sms_notification(record["to_phone"], _format_reminder_sms(record["message"]))
         async with _lock:
             stored = _reminders.get(record["id"])
             if stored is None:

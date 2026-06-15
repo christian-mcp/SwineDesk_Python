@@ -35,15 +35,23 @@ class GetOpenMarket(Tool, name="get_open_market"):
             f"Demand: {response.get('demand_count', len(demand))} requests, "
             f"{response.get('demand_head', 0)} head",
         ]
-        for s in supply[:5]:
-            lines.append(
-                f"  SELL {s.get('order_id','?')} - {s.get('head','?')} {s.get('market','')} "
-                f"{s.get('health','')}"
+        def _line(side: str, item: dict[str, Any]) -> str:
+            line = (
+                f"  {side} {item.get('order_id','?')} - {item.get('head','?')} "
+                f"{item.get('market','')} {item.get('health','')}".rstrip()
             )
-        for d in demand[:5]:
-            lines.append(
-                f"  BUY {d.get('order_id','?')} - {d.get('head','?')} {d.get('market','')} "
-                f"{d.get('health','')}"
-            )
+            vaccine = str(item.get("vaccine") or "").strip()
+            if vaccine:
+                line += f" - Vaccine: {vaccine}"
+            note = str(item.get("notes") or "").strip()
+            if note:
+                line += f" - Notes: {note}"
+            return line
+
+        # Show the whole board, not a silent top-5 — the broker asks for "all orders".
+        for s in supply:
+            lines.append(_line("SELL", s))
+        for d in demand:
+            lines.append(_line("BUY", d))
 
         return {"result": "\n".join(lines), **response}

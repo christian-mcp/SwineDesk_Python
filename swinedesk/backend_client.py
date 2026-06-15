@@ -364,8 +364,12 @@ class BackendClient:
         except httpx.HTTPError:
             return {"count": 0, "contacts": []}
 
-    async def match_orders(self, buy_order_id: str, sell_order_id: str) -> dict[str, Any]:
+    async def match_orders(
+        self, buy_order_id: str, sell_order_id: str, regrade: str = ""
+    ) -> dict[str, Any]:
         payload = {"buy_order_id": buy_order_id, "sell_order_id": sell_order_id}
+        if regrade:
+            payload["regrade"] = regrade
         return await self.post("/v1/query/match-orders", payload)
 
     async def reject_order(self, order_id: str, reason: str = "") -> dict[str, Any]:

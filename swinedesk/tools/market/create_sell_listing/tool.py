@@ -90,7 +90,8 @@ class CreateSellListing(Tool, name="create_sell_listing"):
         "pid": Arg("Source premises ID", optional=True),
         "price_target": Arg("Target price per head", optional=True),
         "vaccines_done": Arg("Vaccines already administered", optional=True),
-        "regrade": Arg("Regrade terms", optional=True),
+        # Regrade is a broker-set deal term, not a seller intake field. It is never
+        # collected here; the broker sets it when confirming the match (see match_orders).
         "notes": Arg("Additional notes", optional=True),
     }
 
@@ -128,8 +129,8 @@ class CreateSellListing(Tool, name="create_sell_listing"):
         await notify_broker_order_created("sell", state, arguments, request_id)
         ref = f" (ref {request_id})" if request_id else ""
         confirmation = (
-            f"Ok got it{ref}. Brian will give you a call shortly to talk this through "
-            "and find you a buyer."
+            f"Thanks, your listing has been submitted to ELM Pork{ref}. You'll get a call "
+            "shortly to talk it through and find you a buyer."
         )
         return {
             "result": confirmation,
