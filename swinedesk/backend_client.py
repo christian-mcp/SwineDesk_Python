@@ -364,6 +364,23 @@ class BackendClient:
         except httpx.HTTPError:
             return {"count": 0, "contacts": []}
 
+    async def start_auction(self, short_id: str, duration_hours: int) -> dict[str, Any]:
+        return await self.post(
+            f"/v1/query/orders/{short_id}/start-auction",
+            {"duration_hours": duration_hours},
+        )
+
+    async def submit_bid(
+        self, short_id: str, bid_price: float, buyer_phone: str
+    ) -> dict[str, Any]:
+        return await self.post(
+            f"/v1/query/orders/{short_id}/bid",
+            {"bid_price": bid_price, "buyer_phone": buyer_phone},
+        )
+
+    async def close_auction(self, short_id: str) -> dict[str, Any]:
+        return await self.post(f"/v1/query/orders/{short_id}/close-auction")
+
     async def match_orders(
         self, buy_order_id: str, sell_order_id: str, regrade: str = ""
     ) -> dict[str, Any]:
