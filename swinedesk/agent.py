@@ -108,6 +108,7 @@ BROKER_TOOL_PATHS = COMMON_TOOL_PATHS | {
     "/tools/market/get_my_request_detail",
     "/tools/market/get_open_market",
     "/tools/market/match_orders",
+    "/tools/market/suggest_matches",
     "/tools/market/reject_order",
     "/tools/market/propose_price",
     # Orders

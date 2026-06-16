@@ -119,6 +119,32 @@ async def _notify_ops_role(phone: str, role: str, order_id: str, head: object, m
         logger.exception("Failed to notify %s phone %s about match", role, phone)
 
 
+def _is_yes(raw: Any) -> bool:
+    return str(raw or "").strip().lower() in ("1", "true", "yes", "y", "on")
+
+
+async def _send_buyer_addons(phone: str | None, first_name: str | None) -> bool:
+    """Text the buyer the optional add-on questions after a deal is paired.
+    Returns True if the SMS was sent. Asked by the broker at deal time, never at intake."""
+    if not phone:
+        return False
+    name = (first_name or "").strip()
+    greeting = f"Hi {name}, " if name else "Hi, "
+    msg = (
+        f"{greeting}your deal's set with ELM Pork. A few optional extras we can bundle in: "
+        "(1) Do you need barn space? "
+        "(2) Want us to line up a feed contract at competitive rates? "
+        "(3) Want a packer contract? We can shop our national packer network for you. "
+        "Just reply with whichever you'd like, or 'no thanks'."
+    )
+    try:
+        await send_sms_notification(phone, msg)
+        return True
+    except Exception:
+        logger.exception("Failed to send add-on questions to buyer %s", phone)
+        return False
+
+
 class MatchOrders(Tool, name="match_orders"):
     TOOL_PATH = "/tools/market/match_orders"
     DESCRIPTION = (
@@ -133,6 +159,12 @@ class MatchOrders(Tool, name="match_orders"):
         "regrade": Arg(
             "Broker-confirmed buyer regrade term for this deal: 'none', '4 weeks', "
             "'8 weeks', or custom text. Omit if the broker did not set one.",
+            optional=True,
+        ),
+        "send_buyer_addons": Arg(
+            "Set to true ONLY if the broker confirmed they want the buyer texted the "
+            "optional add-on questions (barn space, feed contract, packer contract). "
+            "Omit otherwise.",
             optional=True,
         ),
     }
@@ -186,11 +218,33 @@ class MatchOrders(Tool, name="match_orders"):
         await _notify_ops_role(settings.vet_notify_phone, "vet", traded_ref, head_count, market_label)
         await _notify_ops_role(settings.freight_notify_phone, "freight", traded_ref, head_count, market_label)
 
+        # Optional: text the buyer the add-on questions, but only if the broker confirmed it
+        # at deal time (mirrors how regrade is a broker-set, deal-time choice — not intake).
+        addons_sent = False
+        if _is_yes(arguments.get("send_buyer_addons")):
+            addons_sent = await _send_buyer_addons(
+                response.get("buyer_phone"), response.get("buyer_first_name")
+            )
+
         head = response.get("head") or "?"
         market = str(response.get("market") or "").lower().replace("_", " ") or "pigs"
         seller = response.get("seller_company") or "seller"
         buyer = response.get("buyer_company") or "buyer"
         traded = response.get("traded_order_id") or sell_id
         regrade_note = f" Regrade: {regrade}." if regrade else " Regrade: not set."
-        summary = f"Done. {seller} -> {buyer}, {head} {market}. Deal {traded} is TRADED.{regrade_note}"
-        return {"result": summary, **response}
+
+        # Broker economics: show the expected profit (spread x head) on the match.
+        profit = response.get("expected_profit")
+        margin = response.get("margin_per_head")
+        if profit is not None and margin is not None:
+            profit_note = f" Expected profit: ${profit:,.0f} (${margin:,.2f}/head)."
+        else:
+            profit_note = " Expected profit: n/a (a price is missing on one side)."
+
+        addon_note = " Add-on options texted to the buyer." if addons_sent else ""
+
+        summary = (
+            f"Done. {seller} -> {buyer}, {head} {market}. "
+            f"Deal {traded} is TRADED.{profit_note}{regrade_note}{addon_note}"
+        )
+        return {"result": summary, "buyer_addons_sent": addons_sent, **response}
