@@ -97,7 +97,7 @@ SCENES = {
         turns=(
             Turn(
                 body="what loads do I have coming up?",
-                expect_all=("426721",),
+                expect_all=("Iowa Select",),
                 expect_any=("load", "pickup", "status"),
             ),
         ),
