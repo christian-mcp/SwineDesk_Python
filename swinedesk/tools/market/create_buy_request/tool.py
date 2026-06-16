@@ -71,31 +71,6 @@ def _normalize_date(raw: str) -> str | None:
     return None
 
 
-_ADDON_LABELS = {
-    "barn_space": "barn space",
-    "feed_contract": "feed contract",
-    "packer_contract": "packer contract",
-}
-
-
-def _addon_notes(arguments: dict[str, Any]) -> str:
-    """Format answered buyer add-ons into a single notes fragment, or '' if none answered.
-    Records every answer (including a no) so the order record reflects what the buyer said."""
-    fragments: list[str] = []
-    for key, label in _ADDON_LABELS.items():
-        answer = str(arguments.get(key) or "").strip()
-        low = answer.lower()
-        if not low:
-            continue
-        if low in ("yes", "y", "true"):
-            fragments.append(f"{label}: yes")
-        elif low.startswith(("no", "none", "n/a", "not ")):
-            fragments.append(f"{label}: no")
-        else:
-            fragments.append(f"{label}: {answer}")
-    return "Add-ons: " + "; ".join(fragments) if fragments else ""
-
-
 class CreateBuyRequest(Tool, name="create_buy_request"):
     TOOL_PATH = "/tools/market/create_buy_request"
     DESCRIPTION = "Create a buyer-side request for wean or feeder pigs."
@@ -111,13 +86,10 @@ class CreateBuyRequest(Tool, name="create_buy_request"):
         "pid": Arg("Destination premises ID", optional=True),
         "budget_target": Arg("Target budget per head", optional=True),
         "vaccine_requirements": Arg("Required vaccines", optional=True),
-        # Regrade is a broker-set deal term, not a buyer intake field. It is never
-        # collected here; the broker sets it when confirming the match (see match_orders).
-        # Buyer add-on services ELM can bundle with the pigs. Record the buyer's answer
-        # (yes/no plus any detail) so the broker sees what was requested.
-        "barn_space": Arg("Buyer's answer on whether they need barn space", optional=True),
-        "feed_contract": Arg("Buyer's answer on whether they want a feed contract", optional=True),
-        "packer_contract": Arg("Buyer's answer on whether they want a packer contract", optional=True),
+        # Regrade and buyer add-on services (barn space, feed contract, packer contract)
+        # are NOT collected at intake. Regrade is a broker-set deal term; the add-on
+        # questions are offered to the buyer at deal time and sent by the broker through
+        # match_orders (send_buyer_addons).
         "notes": Arg("Additional notes", optional=True),
     }
 
@@ -141,14 +113,6 @@ class CreateBuyRequest(Tool, name="create_buy_request"):
                 arguments.pop("delivery_start_date", None)
 
         payload = {"actorId": actor_id, "phone": getattr(state, "phone", ""), **arguments}
-        # Fold the buyer add-on answers into notes so they persist on the backend order
-        # record today; the backend has no structured add-on fields yet. The separate
-        # add-on args stay on `arguments` for the broker SMS, so nothing duplicates in a
-        # single output (SMS shows its own Add-ons line, backend stores them in notes).
-        addon_notes = _addon_notes(arguments)
-        if addon_notes:
-            base_notes = str(arguments.get("notes") or "").strip()
-            payload["notes"] = f"{base_notes}. {addon_notes}" if base_notes else addon_notes
         merge_workflow_draft(state, "buyer_request", arguments)
         backend = get_backend_client()
         response = await backend.create_buy_request(payload)
