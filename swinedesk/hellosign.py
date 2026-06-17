@@ -71,14 +71,24 @@ class _Overlay:
         self.items.append({"cx": cx, "y": y0 + _BL, "t": _ascii(value),
                            "size": size, "style": "", "white": white})
 
+    def block(self, x: float, y0: float, w: float, value: Any, *, size: float = 10,
+              line_h: float = 12) -> None:
+        if value in (None, ""):
+            return
+        self.items.append({"x": x, "y": y0 + _BL, "w": w, "t": _ascii(value),
+                           "size": size, "style": "", "block": True, "line_h": line_h})
+
     def render_onto(self, template: str) -> bytes:
         pdf = FPDF(unit="pt", format=(_PAGE_W, _PAGE_H))
         pdf.set_auto_page_break(False)
         pdf.add_page()
         for it in self.items:
             pdf.set_font("Helvetica", it["style"], it["size"])
-            pdf.set_text_color(255, 255, 255) if it["white"] else pdf.set_text_color(20, 20, 20)
-            if "cx" in it:
+            pdf.set_text_color(255, 255, 255) if it.get("white") else pdf.set_text_color(20, 20, 20)
+            if it.get("block"):
+                pdf.set_xy(it["x"], it["y"] - it["size"])
+                pdf.multi_cell(w=it["w"], h=it["line_h"], text=it["t"])
+            elif "cx" in it:
                 w = pdf.get_string_width(it["t"])
                 pdf.text(it["cx"] - w / 2, it["y"], it["t"])
             else:
@@ -169,23 +179,52 @@ def _build_purchase_order(
     return ov.render_onto("purchase_order.pdf")
 
 
-# Grade sheet reject rows we can map unambiguously from the grading tool fields, into the
-# TOTAL REJECTS # column (centre x). Belly/scrotal split and the SUMMARY totals are left
-# for Brian to confirm. Row = label top-edge y per metric.
+# Grade sheet reject rows we can map from the SMS grading tool into the TOTAL REJECTS #
+# column (centre x). Row = label top-edge y per metric.
 _GS_TOTAL_REJECTS_CX = 483.0
 _GS_ROWS = {
     "underweight": 353.2,       # "Less than 8 #"
     "unthrifty": 373.9,
     "ruptures": 394.1,          # "Belly ruptures" (belly/scrotal split unconfirmed)
+    "scrotal_ruptures": 414.4,
     "navel_infections": 434.6,
+    "greasy_pigs": 454.8,
+    "humpback": 475.0,
+    "swollen_joints": 495.2,
+    "abscesses": 515.4,
+    "severely_crippled": 535.6,
+    "swollen_ears": 555.8,
+    "bad_feet": 576.0,
+    "rail_backs": 596.2,
     "doa": 616.9,
     "dead_within_12hrs": 637.1,
+    "boars": 657.3,
 }
+
+_GS_SUMMARY = {
+    "comments": (140.0, 734.0, 410.0),
+    "total_head_shipped": (196.0, 754.0),
+    "total_head_delivered": (196.0, 775.0),
+    "total_head_minus_rejects": (214.0, 796.0),
+    "total_rejects": (458.0, 754.0),
+    "reject_rate": (437.0, 775.0),
+}
+
+
+def _int_or_zero(value: Any) -> int:
+    try:
+        text = str(value).strip()
+        if not text or text.lower() == "none":
+            return 0
+        return int(float(text))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _build_grade_sheet(
     *, load_id: str, grader: str, buyer_company: str, buyer_name: str,
-    buyer_phone: str, buyer_email: str, writeoffs: dict[str, Any],
+    buyer_phone: str, buyer_email: str, head_shipped: Any, head_delivered: Any,
+    comments: str, writeoffs: dict[str, Any],
 ) -> bytes:
     ov = _Overlay()
     ov.text(94, 116.4, load_id, size=10, style="B", white=True)   # LOAD NO. (header band)
@@ -202,6 +241,18 @@ def _build_grade_sheet(
         val = writeoffs.get(key)
         if val and str(val).strip() not in {"0", "0.0", "None"}:
             ov.centered(_GS_TOTAL_REJECTS_CX, y, val)
+
+    delivered = _int_or_zero(head_delivered)
+    shipped = _int_or_zero(head_shipped) or delivered
+    total_rejects = sum(_int_or_zero(writeoffs.get(key)) for key in _GS_ROWS)
+    remaining = delivered - total_rejects if delivered else 0
+    reject_rate = f"{(total_rejects / delivered) * 100:.1f}%" if delivered else "0%"
+    ov.block(*_GS_SUMMARY["comments"], comments, size=9, line_h=10)
+    ov.text(*_GS_SUMMARY["total_head_shipped"], shipped, size=9)
+    ov.text(*_GS_SUMMARY["total_head_delivered"], delivered, size=9)
+    ov.text(*_GS_SUMMARY["total_head_minus_rejects"], remaining, size=9)
+    ov.text(*_GS_SUMMARY["total_rejects"], total_rejects, size=9)
+    ov.text(*_GS_SUMMARY["reject_rate"], reject_rate, size=9)
     return ov.render_onto("grade_sheet.pdf")
 
 
@@ -418,6 +469,8 @@ async def send_grade_sheet(
     buyer_company: str = "",
     buyer_phone: str = "",
     site: str = "",
+    head_shipped: Any = "",
+    comments: str = "",
     writeoffs: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Email the buyer the grade-sheet confirmation with the filled grade-sheet PDF."""
@@ -427,7 +480,8 @@ async def send_grade_sheet(
     pdf = await asyncio.to_thread(
         _build_grade_sheet, load_id=load_id, grader=grader_name,
         buyer_company=buyer_company, buyer_name=buyer_name, buyer_phone=buyer_phone,
-        buyer_email=buyer_email, writeoffs=writeoffs or {},
+        buyer_email=buyer_email, head_shipped=head_shipped,
+        head_delivered=head_count_received, comments=comments, writeoffs=writeoffs or {},
     )
     result = await send_email_with_pdf(
         buyer_email,

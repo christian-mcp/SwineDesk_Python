@@ -7,10 +7,41 @@ from typing import Any
 
 from swinedesk.backend_client import get_backend_client
 from swinedesk.hellosign import send_grade_sheet
-from swinedesk.tool_helpers import ensure_role, merge_workflow_draft, remember_load, require_actor_id
+from swinedesk.tool_helpers import (
+    clear_workflow_draft,
+    ensure_role,
+    merge_workflow_draft,
+    remember_load,
+    require_actor_id,
+)
 from swinedesk.tooling import Arg, Tool
 
 logger = logging.getLogger(__name__)
+
+GRADING_DRAFT_KEYS = {
+    "load_id",
+    "grading_stage",
+    "grading_date",
+    "grader_name",
+    "head_count_received",
+    "underweight",
+    "unthrifty",
+    "ruptures",
+    "scrotal_ruptures",
+    "navel_infections",
+    "greasy_pigs",
+    "humpback",
+    "swollen_joints",
+    "abscesses",
+    "severely_crippled",
+    "swollen_ears",
+    "bad_feet",
+    "rail_backs",
+    "doa",
+    "dead_within_12hrs",
+    "boars",
+    "comments",
+}
 
 
 class SubmitGrading(Tool, name="submit_grading"):
@@ -24,11 +55,19 @@ class SubmitGrading(Tool, name="submit_grading"):
         "underweight": Arg("Underweight write-offs", optional=True),
         "unthrifty": Arg("Unthrifty write-offs", optional=True),
         "ruptures": Arg("Ruptures write-offs", optional=True),
+        "scrotal_ruptures": Arg("Scrotal ruptures write-offs", optional=True),
         "navel_infections": Arg("Navel infection write-offs", optional=True),
+        "greasy_pigs": Arg("Greasy pigs write-offs", optional=True),
+        "humpback": Arg("Humpback write-offs", optional=True),
+        "swollen_joints": Arg("Swollen joints write-offs", optional=True),
+        "abscesses": Arg("Abscesses write-offs", optional=True),
+        "severely_crippled": Arg("Severely crippled write-offs", optional=True),
+        "swollen_ears": Arg("Swollen ears write-offs", optional=True),
+        "bad_feet": Arg("Bad feet write-offs", optional=True),
+        "rail_backs": Arg("Rail backs write-offs", optional=True),
         "doa": Arg("Dead on arrival write-offs", optional=True),
         "dead_within_12hrs": Arg("Dead within 12 hours write-offs", optional=True),
-        "other_count": Arg("Other write-offs count", optional=True),
-        "other_desc": Arg("Other write-offs description", optional=True),
+        "boars": Arg("Boars write-offs", optional=True),
         "comments": Arg("Additional comments", optional=True),
         "photo_urls": Arg("List of photo URLs", optional=True),
     }
@@ -55,10 +94,19 @@ class SubmitGrading(Tool, name="submit_grading"):
             "underweight",
             "unthrifty",
             "ruptures",
+            "scrotal_ruptures",
             "navel_infections",
+            "greasy_pigs",
+            "humpback",
+            "swollen_joints",
+            "abscesses",
+            "severely_crippled",
+            "swollen_ears",
+            "bad_feet",
+            "rail_backs",
             "doa",
             "dead_within_12hrs",
-            "other_count",
+            "boars",
         )
         for field in writeoff_fields:
             value = arguments.get(field, 0)
@@ -71,6 +119,7 @@ class SubmitGrading(Tool, name="submit_grading"):
             profile = await backend.get_actor_profile(actor_id, "buyer")
             buyer_email = str(profile.get("email") or "").strip()
             if buyer_email:
+                logger.info("Building grade sheet PDF for load %s to %s", load_id, buyer_email)
                 gs = await send_grade_sheet(
                     load_id=load_id,
                     head_count_received=arguments.get("head_count_received", "?"),
@@ -82,12 +131,20 @@ class SubmitGrading(Tool, name="submit_grading"):
                     buyer_company=str((profile.get("company") or {}).get("name") or ""),
                     buyer_phone=str(profile.get("phone") or ""),
                     site=str(response.get("site_name") or response.get("destination") or ""),
+                    head_shipped=response.get("load_quantity") or response.get("quantity") or "",
+                    comments=str(arguments.get("comments") or ""),
                     writeoffs=arguments,
                 )
                 if not gs.get("success"):
                     logger.warning("Grade sheet email failed for load %s: %s", load_id, gs.get("error"))
+                else:
+                    logger.info("Grade sheet email sent for load %s to %s", load_id, buyer_email)
+            else:
+                logger.warning("Skipping grade sheet email for load %s: buyer email missing", load_id)
         except Exception:
             logger.exception("Failed to send grade sheet email for load %s", load_id)
+
+        clear_workflow_draft(state, keys=GRADING_DRAFT_KEYS)
 
         return {
             "result": response.get("msg", f"Submitted grading for {load_id}."),
