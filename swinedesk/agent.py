@@ -51,6 +51,8 @@ COMMON_TOOL_PATHS = {
     "/tools/actors/get_actor_profile",
     "/tools/sites/resolve_site",
     "/tools/sites/create_site_for_known_actor",
+    # Lets the bot text the caller content they ask for during a voice call.
+    "/tools/ops/text_caller",
 }
 
 SELLER_TOOL_PATHS = COMMON_TOOL_PATHS | {
@@ -91,6 +93,7 @@ FREIGHT_TOOL_PATHS = {
     "/tools/loads/confirm_freight_assignment",
     "/tools/loads/submit_freight_details",
     "/tools/ops/submit_freight_by_text",
+    "/tools/ops/text_caller",
     "/tools/issues/report_delivery_issue",
 }
 
@@ -99,6 +102,7 @@ VET_TOOL_PATHS = {
     "/tools/health/get_cert_instructions",
     "/tools/loads/get_health_cert_status",
     "/tools/health/get_vet_pending_loads",
+    "/tools/ops/text_caller",
 }
 
 BROKER_TOOL_PATHS = COMMON_TOOL_PATHS | {
