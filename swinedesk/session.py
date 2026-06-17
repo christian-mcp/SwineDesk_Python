@@ -33,6 +33,7 @@ class Session:
     known_site_ids: list[str] = field(default_factory=list)
     escalation_flags: list[str] = field(default_factory=list)
     last_broker_alert_at: str | None = None
+    pending_action: dict[str, Any] | None = None
     messages: list[dict[str, str]] = field(default_factory=list)
     last_activity: float = field(default_factory=time.time)
 
@@ -54,6 +55,7 @@ class Session:
             known_site_ids=list(self.known_site_ids),
             last_broker_alert_at=self.last_broker_alert_at,
             escalation_flags=list(self.escalation_flags),
+            pending_action=dict(self.pending_action) if self.pending_action else None,
         )
 
     def apply_state(self, state: SwineDeskState) -> None:
@@ -72,6 +74,9 @@ class Session:
         self.known_site_ids = list(state.known_site_ids)
         self.last_broker_alert_at = state.last_broker_alert_at
         self.escalation_flags = list(state.escalation_flags)
+        # pending_action persists across turns so the broker can confirm on the next SMS.
+        # None clears it (confirm_action sets state.pending_action = None after executing).
+        self.pending_action = dict(state.pending_action) if state.pending_action else None
         self.last_activity = time.time()
 
 
@@ -153,6 +158,7 @@ def _load_sessions_from_disk() -> None:
             known_site_ids=list(payload.get("known_site_ids", [])),
             escalation_flags=list(payload.get("escalation_flags", [])),
             last_broker_alert_at=payload.get("last_broker_alert_at"),
+            pending_action=payload.get("pending_action") or None,
             messages=list(payload.get("messages", [])),
             last_activity=float(payload.get("last_activity", time.time())),
         )

@@ -268,7 +268,7 @@ Supported jobs:
 7. Set follow-up reminders for any user or deal
 8. Pair an open buy request with an open sell listing to close a deal
 9. Find contacts by role or state (e.g. "show me Iowa buyers", "list all vets in MN")
-10. Blast a message to multiple contacts at once by role and/or state
+10. Blast a message to multiple contacts at once by role and/or state (stages first, fires on YES)
 11. Complete a load after grading — transitions it to INVOICED
 12. Submit the final purchase order for a load (freight cost, weight slide, head count)
 13. Ask a seller or buyer whether they'll accept a price, and update their order if they agree
@@ -351,8 +351,23 @@ Closing an auction:
 Rejecting an order:
 - When the broker says "kill that", "reject X", "drop X", "pass on X", call reject_order
   with the short id. Pass along a short reason if the broker gave one.
-- The submitter is automatically texted that their listing or request was passed on.
-- Confirm to the broker in one short line.
+- reject_order STAGES the action and asks for YES — it does NOT fire immediately.
+  Show the confirmation prompt to the broker and wait.
+- When the broker replies YES/confirm/go ahead/do it, call confirm_action (confirm=true).
+- When the broker replies NO/cancel/never mind, call confirm_action (confirm=false).
+- Do NOT re-call reject_order to confirm — that re-stages and discards the pending action.
+- After confirm_action succeeds, confirm to the broker in one short line.
+
+Blasting a message to multiple contacts:
+- When the broker says "text all Iowa buyers", "blast my Texas sellers", "send this to all vets
+  in MN", call blast_message with the message text, role filter, and/or state filter.
+- When blasting about a specific seller's listing, pass that seller's phone as exclude_phone
+  so the seller is not texted about their own pigs.
+- blast_message STAGES the action and asks for YES — it does NOT send immediately.
+  Show the recipient count and confirmation prompt to the broker and wait.
+- When the broker replies YES/confirm/go ahead/send it, call confirm_action (confirm=true).
+- When the broker replies NO/cancel/never mind, call confirm_action (confirm=false).
+- Do NOT re-call blast_message to confirm — that re-stages and discards the pending action.
 
 When showing open supply / demand or any listings, lead with the people and the pigs:
 - "Moreton - JP, Iowa, +52 55 1953 5147 - 2,400 feeder pigs, PRRS, targeting $58, vaccines done"
@@ -401,6 +416,29 @@ def _state_summary(state: SwineDeskState) -> str:
         "known_site_ids": state.known_site_ids,
         "escalation_flags": state.escalation_flags,
     }
+    pending_action_rule = ""
+    if state.pending_action:
+        pa = state.pending_action
+        payload["pending_action"] = {
+            "kind": pa.get("kind"),
+            "summary": pa.get("summary"),
+        }
+        pending_action_rule = (
+            " IMPORTANT — a staged action is waiting for broker confirmation "
+            f"(kind={pa.get('kind')!r}): {pa.get('summary')}. This is a SAFETY GATE; the action "
+            "must NOT fire unless the broker clearly approves it. Resolve it THIS turn: "
+            "1) If the latest message is a clear affirmative for THIS action (YES, yes please, "
+            "confirm, confirmed, send, send it, send them, go ahead, do it, fire it, blast it, "
+            "yep, yeah, sure, ok send), call confirm_action with confirm=true. "
+            "2) If the latest message is a negation OR a change of subject (NO, cancel, stop, "
+            "never mind, don't, drop it, forget it, hold off, changed my mind, scratch that, or "
+            "the broker asks for something else entirely), call confirm_action with confirm=false "
+            "to clear the stale staged action, THEN handle their new request. "
+            "3) If you are NOT certain it is a clear YES, do NOT execute — re-ask 'Reply YES to "
+            "send or NO to cancel.' Never call confirm=true on an ambiguous or unrelated message. "
+            "Do NOT re-call blast_message or reject_order to confirm — that would re-stage."
+        )
+
     offer_rule = ""
     if state.pending_offer:
         po = state.pending_offer
@@ -431,6 +469,7 @@ def _state_summary(state: SwineDeskState) -> str:
         "PRRS-negative / clean / naive / healthy is CLEAN; only use PRRS or PEDV if the "
         "herd is positive for that disease. "
         "Market MUST be exactly WEAN_PIGS or FEEDER_PIGS."
+        + pending_action_rule
         + offer_rule
     )
     return f"Current session context:\n{json.dumps(payload, ensure_ascii=True)}\n\n{rules}"

@@ -33,6 +33,10 @@ class SwineDeskState(BaseModel):
     # Transient: a pending broker price offer addressed to this phone, if any.
     # Populated per-inbound from the negotiation store; never persisted to session.
     pending_offer: dict[str, Any] | None = None
+    # Transient: a staged destructive action waiting for broker YES confirmation.
+    # Shape: {"kind": "blast"|"reject", "args": {...}, "summary": "<human summary>"}
+    # Never persisted to session storage — cleared once confirmed or cancelled.
+    pending_action: dict[str, Any] | None = None
 
     def merge_draft(self, values: dict[str, Any]) -> None:
         """Merge draft workflow data into state."""
