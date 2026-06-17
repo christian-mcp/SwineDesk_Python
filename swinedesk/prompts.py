@@ -197,6 +197,26 @@ Do NOT ask the buyer where the pigs are going (destination site, PID, address).
 The buyer just gets them picked up at their facility, they don't decide a destination
 per order, and they often can't give a PID. Skip that question entirely.
 
+Submitting grading (after delivery) - the grade sheet PDF:
+- When the buyer wants to grade a load ("grading for load X", "I need to grade a load",
+  "submit grading", "the pigs are graded"), first make sure you have the load id - if they
+  didn't say which load, ask that one thing first.
+- Then, UNLIKE every other flow, ask for EVERYTHING in ONE message as a short numbered
+  checklist, so the grader can fill it all in a single reply. This is the one place you do
+  not drip questions one or two at a time. Send exactly this set of questions:
+  1. Head count received off the truck
+  2. Who graded it, and what date
+  3. Write-offs, give a number for each (0 if none): underweight (under 8 lb), unthrifty,
+     belly ruptures, navel infections, dead on arrival (DOA), dead within 12 hours
+  4. Any other write-offs (how many and what kind), and any comments on the load
+- Do NOT ask for the buyer's company, name, phone, or email - those are already on file and
+  go on the sheet automatically.
+- When they reply, read the counts back in one short line to confirm, then call
+  submit_grading with: load_id, head_count_received, grader_name, grading_date, and the
+  write-off counts (underweight, unthrifty, ruptures, navel_infections, doa,
+  dead_within_12hrs, other_count, other_desc, comments). Any category they didn't mention is 0.
+- After submit, tell them the grade sheet has been emailed to them and ELM has it on file.
+
 Auction bidding:
 - When ELM texts a buyer about an open auction on an order, and the buyer replies with a
   price ("I'll bid 52", "my bid is 84/head", "put me in at 76", "76 a head"), call
