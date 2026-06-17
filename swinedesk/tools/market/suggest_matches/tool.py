@@ -220,19 +220,26 @@ class SuggestMatches(Tool, name="suggest_matches"):
                 "unmatched_demand": unmatched_buys,
             }
 
-        lines = [
-            f"Most profitable way to pair the board: {len(pairings)} deal"
-            f"{'s' if len(pairings) != 1 else ''}, total expected profit ${total_profit:,.0f}."
-        ]
+        # Multi-line, indented layout so it scans on a phone (ASCII only — a stray
+        # unicode glyph would flip the whole SMS to UCS-2 and shrink the segment size).
+        plural = "s" if len(pairings) != 1 else ""
+        lines = [f"Top margins across the board ({len(pairings)} deal{plural}):", ""]
         for n, p in enumerate(pairings, 1):
-            lines.append(
-                f"{n}. {p['sell_company']} (sell {p['sell_order_id']}, {p['head']:,} "
-                f"{p['pig_type']} @ ${p['sell_price_in']:,.2f}) -> {p['buy_company']} "
-                f"(buy {p['buy_order_id']} @ ${p['buy_price_out']:,.2f}) = "
-                f"${p['expected_profit']:,.0f} (${p['margin_per_head']:,.2f}/head)"
-            )
+            lines.append(f"{n}. {p['sell_company']} -> {p['buy_company']}")
+            lines.append(f"   {p['head']:,} {p['pig_type']} @ ${p['margin_per_head']:,.2f}/head")
+            lines.append(f"   margin ~ ${p['expected_profit']:,.0f}")
+            lines.append(f"   book: pair {p['buy_order_id']} with sell {p['sell_order_id']}")
+            lines.append("")
         commands = [f"pair {p['buy_order_id']} with sell {p['sell_order_id']}" for p in pairings]
-        lines.append("To book: " + "; ".join(commands) + ".")
+        lines.append(f"Total across {len(pairings)} pairing{plural}: ~${total_profit:,.0f}")
+        n_un_s, n_un_b = len(unmatched_sells), len(unmatched_buys)
+        if n_un_s or n_un_b:
+            parts = []
+            if n_un_s:
+                parts.append(f"{n_un_s} listing{'s' if n_un_s != 1 else ''}")
+            if n_un_b:
+                parts.append(f"{n_un_b} request{'s' if n_un_b != 1 else ''}")
+            lines.append(f"Unmatched: {', '.join(parts)} (no match yet)")
 
         return {
             "result": "\n".join(lines),

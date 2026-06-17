@@ -64,6 +64,25 @@ def merge_workflow_draft(state: Any, workflow: str, payload: dict[str, Any]) -> 
         state.merge_draft(payload)
 
 
+def clear_workflow_draft(
+    state: Any,
+    *,
+    workflow: str | None = None,
+    keys: set[str] | None = None,
+) -> None:
+    """Clear workflow state and optionally selected draft keys when supported."""
+    if state is None:
+        return
+    if workflow is None or getattr(state, "active_workflow", None) == workflow:
+        if hasattr(state, "active_workflow"):
+            state.active_workflow = None
+    if keys and hasattr(state, "draft_data"):
+        draft = dict(getattr(state, "draft_data", {}) or {})
+        for key in keys:
+            draft.pop(key, None)
+        state.draft_data = draft
+
+
 async def notify_broker_order_created(
     side: str,
     state: Any,

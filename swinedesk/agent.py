@@ -80,6 +80,7 @@ BUYER_TOOL_PATHS = COMMON_TOOL_PATHS | {
     "/tools/loads/get_my_load_detail",
     "/tools/loads/get_driver_details",
     "/tools/grading/submit_grading",
+    "/tools/grading/update_grading_draft",
     "/tools/grading/get_submission_status",
     "/tools/issues/report_delivery_issue",
     "/tools/reminders/set_reminder",
@@ -135,6 +136,7 @@ BROKER_TOOL_PATHS = COMMON_TOOL_PATHS | {
     "/tools/health/get_vet_pending_loads",
     # Grading
     "/tools/grading/submit_grading",
+    "/tools/grading/update_grading_draft",
     "/tools/grading/get_submission_status",
     # Issues
     "/tools/issues/report_delivery_issue",
