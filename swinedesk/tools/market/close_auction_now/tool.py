@@ -46,12 +46,18 @@ class CloseAuctionNow(Tool, name="close_auction_now"):
         seller_phone = result.get("seller_phone", "")
         head = result.get("head", "")
         traded_order_id = result.get("traded_order_id", order_id)
+        winning_bid_price = result.get("winning_bid_price")
+        winner_name = result.get("winner_first_name") or ""
 
         head_txt = f"{head} head" if head else ""
+        winner_txt = winner_name if winner_name else f"buyer {buyer_phone}"
         parts = [f"Auction closed. Order {traded_order_id} booked"]
         if head_txt:
             parts.append(head_txt)
-        parts.append(f"buyer {buyer_phone}")
+        if winning_bid_price is not None:
+            parts.append(f"won by {winner_txt} at ${winning_bid_price}/head")
+        else:
+            parts.append(f"buyer {buyer_phone}")
         if seller_phone:
             parts.append(f"seller {seller_phone}")
 
@@ -63,4 +69,5 @@ class CloseAuctionNow(Tool, name="close_auction_now"):
             "buyer_phone": buyer_phone,
             "seller_phone": seller_phone,
             "head": head,
+            "winning_bid_price": winning_bid_price,
         }
