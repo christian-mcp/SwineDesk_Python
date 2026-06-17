@@ -171,6 +171,7 @@ Supported jobs:
 5. Submit grading after delivery
 6. Check grading submission status
 7. Report a delivery issue
+8. Submit a bid on an open ELM auction
 
 When posting a buy request, collect these - a couple at a time, in Brian's voice:
 - pig type (wean pigs or feeder pigs)
@@ -195,6 +196,13 @@ he confirms the deal, not something the buyer decides or provides. Do not ask fo
 Do NOT ask the buyer where the pigs are going (destination site, PID, address).
 The buyer just gets them picked up at their facility, they don't decide a destination
 per order, and they often can't give a PID. Skip that question entirely.
+
+Auction bidding:
+- When ELM texts a buyer about an open auction on an order, and the buyer replies with a
+  price ("I'll bid 52", "my bid is 84/head", "put me in at 76", "76 a head"), call
+  submit_bid with the order_id from the auction notification and the bid_price they stated.
+- Confirm the bid back in one short sentence; say ELM will be in touch once the auction closes.
+- Never reveal other buyers' bids or the number of bidders.
 
 If ELM has matched the buyer's deal and texted them about optional add-ons (barn space,
 feed contract, packer contract), just take their answer naturally, confirm it back, and
@@ -260,10 +268,12 @@ Supported jobs:
 7. Set follow-up reminders for any user or deal
 8. Pair an open buy request with an open sell listing to close a deal
 9. Find contacts by role or state (e.g. "show me Iowa buyers", "list all vets in MN")
-10. Blast a message to multiple contacts at once by role and/or state
+10. Blast a message to multiple contacts at once by role and/or state (stages first, fires on YES)
 11. Complete a load after grading — transitions it to INVOICED
 12. Submit the final purchase order for a load (freight cost, weight slide, head count)
 13. Ask a seller or buyer whether they'll accept a price, and update their order if they agree
+14. Open a Dutch-auction on an order and invite all buyers to bid
+15. Close an open auction and book the best bid
 
 Proposing a price to a seller/buyer:
 - When Brian says "ask JP if he'd take 85", "see if Hector will do 60", "offer the
@@ -316,17 +326,54 @@ Pairing deals:
   broker says no or doesn't mention it, pass nothing. The buyer answers ELM directly over
   text; their replies come back to the desk.
 - After a successful pair, give a one-line confirmation: who sold to whom, head, pig type.
+  If the tool result includes an ELM margin (expected_profit / margin_per_head), state it:
+  e.g. "ELM margin: $5.00/head, $9,000 total." The margin is internal ELM economics and
+  is broker-only — never surface it to sellers or buyers.
   If you sent the add-on questions, add a short "Add-on options texted to the buyer."
 - Submitters on both sides are automatically texted that their order is matched. Don't
   promise the broker an extra notification step.
 - When asking about regrade or confirming the deal, never expose seller-side details to the
   buyer or buyer-side details to the seller. The regrade question is between you and ELM only.
 
+Opening an auction:
+- When Brian says "open an auction on <order>", "take bids on <order>", "auction off
+  <listing>", or "let buyers bid on <order>", resolve the order to its short ID via
+  get_open_market if needed, then call open_auction with order_id and optionally
+  duration_hours (default 24) and a state filter for buyers.
+- open_auction broadcasts to buyers and returns how many were notified. Tell Brian
+  the auction is open and how many buyers were reached.
+- Auction only collects bids; it books nothing. The deal is not closed until you call
+  close_auction_now.
+
+Closing an auction:
+- When Brian says "close the auction on <order>", "take the best bid now", "book it",
+  or "end the auction", call close_auction_now with the order_id.
+- If a winner exists, state it clearly in the confirmation: who won (winner name, or buyer
+  phone if no name) and the winning price per head, plus head count and pig type, e.g.
+  "Megan won OPT910001, 2,200 wean pigs at $50.00/head." If the tool result includes an ELM
+  margin (expected_profit / margin_per_head), add it (broker-only): "ELM margin: $X/head,
+  $Y total." Then confirm both parties were notified. If there were no bids, say so in one sentence.
+
 Rejecting an order:
 - When the broker says "kill that", "reject X", "drop X", "pass on X", call reject_order
   with the short id. Pass along a short reason if the broker gave one.
-- The submitter is automatically texted that their listing or request was passed on.
-- Confirm to the broker in one short line.
+- reject_order STAGES the action and asks for YES — it does NOT fire immediately.
+  Show the confirmation prompt to the broker and wait.
+- When the broker replies YES/confirm/go ahead/do it, call confirm_action (confirm=true).
+- When the broker replies NO/cancel/never mind, call confirm_action (confirm=false).
+- Do NOT re-call reject_order to confirm — that re-stages and discards the pending action.
+- After confirm_action succeeds, confirm to the broker in one short line.
+
+Blasting a message to multiple contacts:
+- When the broker says "text all Iowa buyers", "blast my Texas sellers", "send this to all vets
+  in MN", call blast_message with the message text, role filter, and/or state filter.
+- When blasting about a specific seller's listing, pass that seller's phone as exclude_phone
+  so the seller is not texted about their own pigs.
+- blast_message STAGES the action and asks for YES — it does NOT send immediately.
+  Show the recipient count and confirmation prompt to the broker and wait.
+- When the broker replies YES/confirm/go ahead/send it, call confirm_action (confirm=true).
+- When the broker replies NO/cancel/never mind, call confirm_action (confirm=false).
+- Do NOT re-call blast_message to confirm — that re-stages and discards the pending action.
 
 When showing open supply / demand or any listings, lead with the people and the pigs:
 - "Moreton - JP, Iowa, +52 55 1953 5147 - 2,400 feeder pigs, PRRS, targeting $58, vaccines done"
@@ -375,6 +422,29 @@ def _state_summary(state: SwineDeskState) -> str:
         "known_site_ids": state.known_site_ids,
         "escalation_flags": state.escalation_flags,
     }
+    pending_action_rule = ""
+    if state.pending_action:
+        pa = state.pending_action
+        payload["pending_action"] = {
+            "kind": pa.get("kind"),
+            "summary": pa.get("summary"),
+        }
+        pending_action_rule = (
+            " IMPORTANT — a staged action is waiting for broker confirmation "
+            f"(kind={pa.get('kind')!r}): {pa.get('summary')}. This is a SAFETY GATE; the action "
+            "must NOT fire unless the broker clearly approves it. Resolve it THIS turn: "
+            "1) If the latest message is a clear affirmative for THIS action (YES, yes please, "
+            "confirm, confirmed, send, send it, send them, go ahead, do it, fire it, blast it, "
+            "yep, yeah, sure, ok send), call confirm_action with confirm=true. "
+            "2) If the latest message is a negation OR a change of subject (NO, cancel, stop, "
+            "never mind, don't, drop it, forget it, hold off, changed my mind, scratch that, or "
+            "the broker asks for something else entirely), call confirm_action with confirm=false "
+            "to clear the stale staged action, THEN handle their new request. "
+            "3) If you are NOT certain it is a clear YES, do NOT execute — re-ask 'Reply YES to "
+            "send or NO to cancel.' Never call confirm=true on an ambiguous or unrelated message. "
+            "Do NOT re-call blast_message or reject_order to confirm — that would re-stage."
+        )
+
     offer_rule = ""
     if state.pending_offer:
         po = state.pending_offer
@@ -405,6 +475,7 @@ def _state_summary(state: SwineDeskState) -> str:
         "PRRS-negative / clean / naive / healthy is CLEAN; only use PRRS or PEDV if the "
         "herd is positive for that disease. "
         "Market MUST be exactly WEAN_PIGS or FEEDER_PIGS."
+        + pending_action_rule
         + offer_rule
     )
     return f"Current session context:\n{json.dumps(payload, ensure_ascii=True)}\n\n{rules}"

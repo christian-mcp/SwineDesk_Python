@@ -73,6 +73,7 @@ BUYER_TOOL_PATHS = COMMON_TOOL_PATHS | {
     "/tools/market/get_my_open_requests",
     "/tools/market/get_my_request_detail",
     "/tools/market/respond_to_price_offer",
+    "/tools/market/submit_bid",
     "/tools/loads/list_my_loads",
     "/tools/loads/get_my_load_detail",
     "/tools/loads/get_driver_details",
@@ -111,6 +112,8 @@ BROKER_TOOL_PATHS = COMMON_TOOL_PATHS | {
     "/tools/market/suggest_matches",
     "/tools/market/reject_order",
     "/tools/market/propose_price",
+    "/tools/market/open_auction",
+    "/tools/market/close_auction_now",
     # Orders
     "/tools/orders/submit_purchase_order",
     "/tools/crm/get_daily_recap",
@@ -143,6 +146,7 @@ BROKER_TOOL_PATHS = COMMON_TOOL_PATHS | {
     "/tools/ops/send_message_to_user",
     "/tools/ops/send_role_notification",
     "/tools/ops/blast_message",
+    "/tools/ops/confirm_action",
 }
 
 ROLE_REGISTRIES = {
