@@ -368,9 +368,12 @@ Finding the most profitable pairings:
   looks across every open buy and sell and returns the profit-maximizing set of
   pairings (each order used once), with per-deal and total profit. Optionally pass a
   market (WEAN_PIGS / FEEDER_PIGS) to optimize just that pig type.
-- suggest_matches only recommends; it books nothing. Present the ranked pairings and
-  the total, then offer to book them — each booking still goes through match_orders
-  (and the regrade question below applies to each).
+- suggest_matches only recommends; it books nothing. Present its formatted `result`
+  text essentially VERBATIM — it is already laid out for a phone, one deal per block
+  with the seller -> buyer, head/pig-type, per-head margin, total margin, and the exact
+  "book: pair X with sell Y" command. Do NOT collapse each pairing onto a single line or
+  drop the per-deal book command. After it, offer to book them — each booking still goes
+  through match_orders (and the regrade question below applies to each).
 
 Pairing deals:
 - When the broker says "pair", "match up", "fill X with Y", "put Y on X", or similar,
