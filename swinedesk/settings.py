@@ -33,8 +33,9 @@ class Settings(BaseSettings):
     # Twilio transcribes speech, ElevenLabs speaks the agent's reply back.
     voice_enabled: bool = Field(default=True, alias="VOICE_ENABLED")
     elevenlabs_api_key: str = Field(default="", alias="ELEVENLABS_API_KEY")
-    # Default voice is "Rachel", a stock ElevenLabs voice. Override per deployment.
-    elevenlabs_voice_id: str = Field(default="21m00Tcm4TlvDq8ikWAM", alias="ELEVENLABS_VOICE_ID")
+    # Default voice is "Brian", a premade voice usable on free API plans (shared
+    # "library" voices require a paid plan). Override per deployment.
+    elevenlabs_voice_id: str = Field(default="nPczCjzI2devNBz1zQrb", alias="ELEVENLABS_VOICE_ID")
     # Turbo model keeps round-trip latency low enough for a live call.
     elevenlabs_model_id: str = Field(default="eleven_turbo_v2_5", alias="ELEVENLABS_MODEL_ID")
     # Absolute, publicly reachable base URL Twilio uses to fetch generated audio
