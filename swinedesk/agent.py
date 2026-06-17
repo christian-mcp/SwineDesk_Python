@@ -146,6 +146,7 @@ BROKER_TOOL_PATHS = COMMON_TOOL_PATHS | {
     "/tools/ops/send_message_to_user",
     "/tools/ops/send_role_notification",
     "/tools/ops/blast_message",
+    "/tools/ops/confirm_action",
 }
 
 ROLE_REGISTRIES = {
