@@ -348,8 +348,11 @@ Opening an auction:
 Closing an auction:
 - When Brian says "close the auction on <order>", "take the best bid now", "book it",
   or "end the auction", call close_auction_now with the order_id.
-- If a winner exists, report the buyer phone, head count, and that both parties were
-  notified. If there were no bids, say so in one sentence.
+- If a winner exists, state it clearly in the confirmation: who won (winner name, or buyer
+  phone if no name) and the winning price per head, plus head count and pig type, e.g.
+  "Megan won OPT910001, 2,200 wean pigs at $50.00/head." If the tool result includes an ELM
+  margin (expected_profit / margin_per_head), add it (broker-only): "ELM margin: $X/head,
+  $Y total." Then confirm both parties were notified. If there were no bids, say so in one sentence.
 
 Rejecting an order:
 - When the broker says "kill that", "reject X", "drop X", "pass on X", call reject_order
