@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
@@ -64,6 +66,29 @@ IMPORTANT_TOOL_PATHS = {
 VOICE_FALLBACK_REPLY = "Sorry, I didn't catch that. Could you say that again?"
 VOICE_GOODBYE = "Thanks for calling ELM Pork. Goodbye."
 VOICE_TECH_ISSUE = "Sorry, we're having a technical issue. Please try again in a minute."
+VOICE_FILLER = "One moment while I pull that up."
+
+# Twilio drops a webhook that doesn't respond within ~15s. An agent turn (backend
+# lookups + LLM + tool calls) can easily exceed that, so a turn runs in the
+# background and Twilio polls /voice/poll until it's ready. Keyed by Twilio CallSid.
+_voice_turns: dict[str, dict] = {}
+# How long to wait inline in /voice/gather before handing off to the poll loop.
+VOICE_INLINE_WAIT_SECONDS = 8.0
+# Silence between poll redirects, and the cap before we give up on a slow turn.
+VOICE_POLL_PAUSE_SECONDS = 2
+VOICE_MAX_POLLS = 25
+# Abandoned turns (caller hung up mid-think) are pruned after this long.
+VOICE_TURN_TTL_SECONDS = 180
+
+
+def _prune_voice_turns(now: float) -> None:
+    stale = [
+        sid
+        for sid, turn in _voice_turns.items()
+        if (now - turn.get("created_at", now)) > VOICE_TURN_TTL_SECONDS
+    ]
+    for sid in stale:
+        _voice_turns.pop(sid, None)
 
 
 def _strip_formatting(text: str) -> str:
@@ -448,35 +473,22 @@ async def voice_webhook(request: Request) -> Response:
     return Response(str(response), media_type="text/xml")
 
 
-@app.post("/voice/gather")
-async def voice_gather(
-    request: Request,
-    speech_result: Annotated[str | None, Form(alias="SpeechResult")] = None,
-    from_phone: Annotated[str | None, Form(alias="From")] = None,
-) -> Response:
-    """Handle one spoken turn: run the agent, speak the reply, keep listening."""
+async def _finish_voice_turn(call_sid: str, request: Request) -> Response:
+    """Build the spoken reply for a completed turn and keep the call going."""
     response = VoiceResponse()
-    inbound = (speech_result or "").strip()
-    phone = (from_phone or "").strip()
-    logger.info("Inbound voice turn: from=%s speech=%r", phone, inbound)
+    turn = _voice_turns.pop(call_sid, None)
+    task: asyncio.Task | None = turn.get("task") if turn else None
+    phone = turn.get("phone", "") if turn else ""
 
-    if not phone:
+    if task is None:
         await _speak(response, VOICE_TECH_ISSUE, request, static=True)
         response.hangup()
         return Response(str(response), media_type="text/xml")
 
-    if not inbound:
-        gather = _new_gather()
-        await _speak(gather, VOICE_FALLBACK_REPLY, request, static=True)
-        response.append(gather)
-        await _speak(response, VOICE_GOODBYE, request, static=True)
-        response.hangup()
-        return Response(str(response), media_type="text/xml")
-
     try:
-        result = await _process_inbound(phone, inbound, "voice")
+        result: InboundResult = task.result()
     except Exception:
-        logger.exception("Voice handler failed for phone=%s", phone)
+        logger.exception("Voice turn failed for call=%s phone=%s", call_sid, phone)
         await _speak(response, VOICE_TECH_ISSUE, request, static=True)
         response.hangup()
         return Response(str(response), media_type="text/xml")
@@ -496,6 +508,84 @@ async def voice_gather(
     response.append(gather)
     await _speak(response, VOICE_GOODBYE, request, static=True)
     response.hangup()
+    return Response(str(response), media_type="text/xml")
+
+
+@app.post("/voice/gather")
+async def voice_gather(
+    request: Request,
+    speech_result: Annotated[str | None, Form(alias="SpeechResult")] = None,
+    from_phone: Annotated[str | None, Form(alias="From")] = None,
+    call_sid: Annotated[str | None, Form(alias="CallSid")] = None,
+) -> Response:
+    """Kick off one spoken turn in the background; finish inline if it's fast."""
+    response = VoiceResponse()
+    inbound = (speech_result or "").strip()
+    phone = (from_phone or "").strip()
+    sid = (call_sid or "").strip() or phone
+    logger.info("Inbound voice turn: call=%s from=%s speech=%r", sid, phone, inbound)
+
+    if not phone:
+        await _speak(response, VOICE_TECH_ISSUE, request, static=True)
+        response.hangup()
+        return Response(str(response), media_type="text/xml")
+
+    if not inbound:
+        gather = _new_gather()
+        await _speak(gather, VOICE_FALLBACK_REPLY, request, static=True)
+        response.append(gather)
+        await _speak(response, VOICE_GOODBYE, request, static=True)
+        response.hangup()
+        return Response(str(response), media_type="text/xml")
+
+    now = time.time()
+    _prune_voice_turns(now)
+    task = asyncio.create_task(_process_inbound(phone, inbound, "voice"))
+    _voice_turns[sid] = {"task": task, "phone": phone, "polls": 0, "created_at": now}
+
+    # Give a fast turn a chance to finish inline so the caller hears no filler.
+    done, _ = await asyncio.wait({task}, timeout=VOICE_INLINE_WAIT_SECONDS)
+    if task in done:
+        return await _finish_voice_turn(sid, request)
+
+    # Slow turn: tell the caller to hold, then poll for the result.
+    await _speak(response, VOICE_FILLER, request, static=True)
+    response.redirect("/voice/poll", method="POST")
+    return Response(str(response), media_type="text/xml")
+
+
+@app.post("/voice/poll")
+async def voice_poll(
+    request: Request,
+    call_sid: Annotated[str | None, Form(alias="CallSid")] = None,
+    from_phone: Annotated[str | None, Form(alias="From")] = None,
+) -> Response:
+    """Wait for a backgrounded turn to finish, holding the call with short pauses."""
+    sid = (call_sid or "").strip() or (from_phone or "").strip()
+    turn = _voice_turns.get(sid)
+
+    if turn is None or turn.get("task") is None:
+        response = VoiceResponse()
+        await _speak(response, VOICE_TECH_ISSUE, request, static=True)
+        response.hangup()
+        return Response(str(response), media_type="text/xml")
+
+    task: asyncio.Task = turn["task"]
+    if task.done():
+        return await _finish_voice_turn(sid, request)
+
+    turn["polls"] = turn.get("polls", 0) + 1
+    if turn["polls"] >= VOICE_MAX_POLLS:
+        logger.warning("Voice turn exceeded poll budget for call=%s", sid)
+        _voice_turns.pop(sid, None)
+        response = VoiceResponse()
+        await _speak(response, VOICE_TECH_ISSUE, request, static=True)
+        response.hangup()
+        return Response(str(response), media_type="text/xml")
+
+    response = VoiceResponse()
+    response.pause(length=VOICE_POLL_PAUSE_SECONDS)
+    response.redirect("/voice/poll", method="POST")
     return Response(str(response), media_type="text/xml")
 
 
