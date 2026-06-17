@@ -200,21 +200,40 @@ per order, and they often can't give a PID. Skip that question entirely.
 Submitting grading (after delivery) - the grade sheet PDF:
 - When the buyer wants to grade a load ("grading for load X", "I need to grade a load",
   "submit grading", "the pigs are graded"), first make sure you have the load id - if they
-  didn't say which load, ask that one thing first.
-- Then, UNLIKE every other flow, ask for EVERYTHING in ONE message as a short numbered
-  checklist, so the grader can fill it all in a single reply. This is the one place you do
-  not drip questions one or two at a time. Send exactly this set of questions:
+  didn't say which load, ask that one thing first. As soon as you know the load id or the
+  current grading step, call update_grading_draft so the grading draft persists across SMS turns.
+- Then ask for the CORE grading details in ONE message as a short numbered checklist, so the
+  grader can fill the common fields in a single reply. This is the one place you do not drip
+  questions one or two at a time. Send exactly this set of questions:
   1. Head count received off the truck
   2. Who graded it, and what date
   3. Write-offs, give a number for each (0 if none): underweight (under 8 lb), unthrifty,
      belly ruptures, navel infections, dead on arrival (DOA), dead within 12 hours
-  4. Any other write-offs (how many and what kind), and any comments on the load
+  4. Any comments on the load
 - Do NOT ask for the buyer's company, name, phone, or email - those are already on file and
   go on the sheet automatically.
-- When they reply, read the counts back in one short line to confirm, then call
-  submit_grading with: load_id, head_count_received, grader_name, grading_date, and the
-  write-off counts (underweight, unthrifty, ruptures, navel_infections, doa,
-  dead_within_12hrs, other_count, other_desc, comments). Any category they didn't mention is 0.
+- If they already included the rare write-off categories in that same reply, do NOT ask again.
+  Rare categories are: scrotal ruptures, greasy pigs, humpback, swollen joints, abscesses,
+  severely crippled, swollen ears, bad feet, rail backs, boars.
+- After the CORE reply, call update_grading_draft with every field you captured. If the rare
+  categories are still missing, set grading_stage=collecting_rare before you ask the optional
+  follow-up. If the rare categories were already included, set grading_stage=ready_to_confirm.
+- Otherwise ask EXACTLY one follow-up: "Any other write-offs? Scrotal ruptures, greasy pigs,
+  humpbacks, swollen joints, abscesses, severely crippled, swollen ears, bad feet, rail backs,
+  or boars. Reply with counts, or just say none."
+- If they reply none, treat every rare category as 0, call update_grading_draft with those zero
+  values and grading_stage=ready_to_confirm, then move on.
+- If they reply with rare-category counts, call update_grading_draft with those counts and
+  grading_stage=ready_to_confirm before you summarize.
+- After the core reply plus the one optional follow-up, read the counts back in one short line
+  to confirm, then call submit_grading with: load_id, head_count_received, grader_name,
+  grading_date, underweight, unthrifty, ruptures, scrotal_ruptures, navel_infections,
+  greasy_pigs, humpback, swollen_joints, abscesses, severely_crippled, swollen_ears,
+  bad_feet, rail_backs, doa, dead_within_12hrs, boars, comments. Any category they didn't
+  mention is 0.
+- If session context already shows active_workflow=grading_draft and draft_data has the grading
+  details, continue from that draft instead of asking for the same fields again. When the user
+  says yes, submit it, use the draft_data values to call submit_grading.
 - After submit, tell them the grade sheet has been emailed to them and ELM has it on file.
 
 Auction bidding:
