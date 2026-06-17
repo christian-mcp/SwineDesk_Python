@@ -11,7 +11,10 @@ from swinedesk.tooling import Arg, Tool
 
 class ListMyLoads(Tool, name="list_my_loads"):
     TOOL_PATH = "/tools/loads/list_my_loads"
-    DESCRIPTION = "List upcoming actor-safe loads for sellers or buyers."
+    DESCRIPTION = (
+        "List upcoming loads. For a seller or buyer, lists their own actor-safe loads. "
+        "For the broker, lists every open load in the system (all loads not yet invoiced)."
+    )
     ARGUMENTS = {
         "window": Arg("today, week, month, or custom", optional=True),
         "date_from": Arg("Start date for custom range", optional=True),
@@ -19,7 +22,7 @@ class ListMyLoads(Tool, name="list_my_loads"):
     }
 
     async def run(self, arguments: dict[str, Any], state: Any) -> dict[str, Any]:
-        role_error = ensure_role(state, {"seller", "buyer"})
+        role_error = ensure_role(state, {"seller", "buyer", "broker"})
         if role_error:
             return role_error
 

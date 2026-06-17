@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import smtplib
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
@@ -17,6 +18,24 @@ from swinedesk.settings import settings
 logger = logging.getLogger(__name__)
 
 _twilio_client: TwilioClient | None = None
+
+
+def _to_e164(phone: str | None) -> str | None:
+    """Normalize a phone number to E.164 (leading +). Twilio rejects bare numbers.
+
+    Prepends a '+' when the value is otherwise all digits (e.g. a stored number
+    like '525519535147' that lost its '+'). Numbers already starting with '+'
+    and anything we can't confidently normalize are returned unchanged.
+    """
+    if not phone:
+        return phone
+    trimmed = phone.strip()
+    if trimmed.startswith("+"):
+        return trimmed
+    digits = re.sub(r"[\s\-().]", "", trimmed)
+    if digits.isdigit():
+        return "+" + digits
+    return trimmed
 
 
 def _get_twilio_client() -> TwilioClient | None:
@@ -92,6 +111,7 @@ async def send_sms_notification(to_phone: str, message: str) -> dict[str, str | 
     if client is None or not from_phone or not to_phone:
         return {"success": False, "error": "Twilio is not configured."}
 
+    to_phone = _to_e164(to_phone)
     try:
         client.messages.create(body=message, from_=from_phone, to=to_phone)
         return {"success": True, "to_phone": to_phone}

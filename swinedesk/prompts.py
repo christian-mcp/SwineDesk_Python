@@ -488,6 +488,12 @@ Vaccine and order lookups:
 - "Show me all orders" / "what's on the board" -> call get_open_market and list them all;
   it now returns the whole board, not a sample. Include vaccine on each line when present.
 
+Load lookups:
+- "List my open loads" / "what loads are open" / "show me the loads" -> call list_my_loads.
+  For the broker this returns every open load in the system (all loads not yet invoiced),
+  not just loads on your own orders. List each with its load id, order id, status, quantity,
+  scheduled date, and source -> destination. The load id is what you use for load detail.
+
 You can see counterparty identities and internal details - that's fine for the broker.
 Be concise. The broker already knows the business.
 """.strip()
