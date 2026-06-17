@@ -9,6 +9,8 @@ The MVP remains in this repository (`index.js`, `claude.js`, `broker.js`, etc.).
 - FastAPI webhook app with:
   - `GET /` health check
   - `POST /sms` Twilio SMS webhook
+  - `POST /voice` + `POST /voice/gather` Twilio Voice webhooks (talk to the bot by phone)
+  - `GET /voice/audio/{id}.mp3` serves ElevenLabs-synthesized reply audio for Twilio `<Play>`
   - `POST /docs/health-cert` health certificate webhook
 - Two separate role-specific agents (`producer` and `broker`), selected from backend role lookup
 - One-session-per-phone in-memory session store (same model as current MVP)
@@ -138,11 +140,35 @@ uvicorn swinedesk.app:app --reload --port 3000
 
 - Point Twilio incoming message webhook to:
   - `https://<your-domain>/sms`
+- Point the Twilio number's **Voice "A call comes in"** webhook (HTTP POST) to:
+  - `https://<your-domain>/voice`
 - Backend-triggered SMS notification webhook:
   - `https://<your-domain>/notifications/sms`
   - Protected by `Authorization: Bearer <BACKEND_API_TOKEN>`
 - Health cert automation webhook (Make/Zapier/email parser) to:
   - `https://<your-domain>/docs/health-cert`
+
+## Voice (inbound calls)
+
+Calling the Twilio number runs the **same agent, tools, sessions, and role
+routing as SMS** — every operation available over text is available over the
+phone. Twilio transcribes the caller's speech (`<Gather input="speech">`), the
+transcript runs through the identical `_process_inbound` path the SMS webhook
+uses, and the agent's reply is spoken back with ElevenLabs text-to-speech.
+
+- **Confirmation texts:** when a call completes an important, state-changing
+  action (listing/request submitted, deal paired, purchase order submitted,
+  freight confirmed/driver details taken, grading submitted, load completed,
+  reminder set, price offer answered), the spoken confirmation is also texted to
+  the caller so there is a written record. See `IMPORTANT_TOOL_PATHS` in
+  `swinedesk/app.py`.
+- **Voice config** (`.env`): `VOICE_ENABLED`, `ELEVENLABS_API_KEY`,
+  `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID`, `VOICE_GREETING`, and
+  `PUBLIC_BASE_URL` (absolute https base URL Twilio fetches reply audio from;
+  leave blank to derive from the inbound request host).
+- **Graceful fallback:** if ElevenLabs is unavailable (no key, no credits, API
+  error), the call still works — it falls back to Twilio's built-in `<Say>`
+  voice instead of failing.
 
 ## Backend bridge config
 

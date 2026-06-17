@@ -29,6 +29,22 @@ class Settings(BaseSettings):
     twilio_auth_token: str = Field(default="", alias="TWILIO_AUTH_TOKEN")
     twilio_phone_number: str = Field(default="", alias="TWILIO_PHONE_NUMBER")
 
+    # Voice (inbound phone calls). The caller talks to the same agent as SMS;
+    # Twilio transcribes speech, ElevenLabs speaks the agent's reply back.
+    voice_enabled: bool = Field(default=True, alias="VOICE_ENABLED")
+    elevenlabs_api_key: str = Field(default="", alias="ELEVENLABS_API_KEY")
+    # Default voice is "Rachel", a stock ElevenLabs voice. Override per deployment.
+    elevenlabs_voice_id: str = Field(default="21m00Tcm4TlvDq8ikWAM", alias="ELEVENLABS_VOICE_ID")
+    # Turbo model keeps round-trip latency low enough for a live call.
+    elevenlabs_model_id: str = Field(default="eleven_turbo_v2_5", alias="ELEVENLABS_MODEL_ID")
+    # Absolute, publicly reachable base URL Twilio uses to fetch generated audio
+    # (e.g. https://swinedesk.up.railway.app). Falls back to the inbound request host.
+    public_base_url: str = Field(default="", alias="PUBLIC_BASE_URL")
+    voice_greeting: str = Field(
+        default="Thanks for calling ELM Pork. How can I help you today?",
+        alias="VOICE_GREETING",
+    )
+
     backend_api_url: str = Field(default="", alias="BACKEND_API_URL")
     backend_api_token: str = Field(default="", alias="BACKEND_API_TOKEN")
     backend_timeout_seconds: int = Field(default=15, alias="BACKEND_TIMEOUT_SECONDS")

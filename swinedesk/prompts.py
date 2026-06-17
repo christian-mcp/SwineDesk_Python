@@ -111,6 +111,24 @@ KNOWN_CONTEXT = """
 This is a regular, active user. Skip pleasantries. Get straight to the task.
 """.strip()
 
+VOICE_CONTEXT = """
+You are on a live phone call, not texting. Your reply is read aloud, so write it to
+be heard, not read:
+- Speak in short, complete spoken sentences. No lists, no bullet points, no IDs read
+  digit by digit unless the caller asks. Say "your feeder listing" or "the Storm Lake
+  load", not a raw order number.
+- Keep it to one or two sentences per turn. Ask a single question at a time and wait.
+- Numbers and dates spoken naturally: "twenty four hundred head", "this Friday".
+- If you need to list several things, summarize the count and offer to text the details
+  instead of reading them all out.
+- Confirm important details out loud before you call a mutation tool, just like over text.
+- After you complete an important action (a listing or request submitted, a deal paired,
+  an order or purchase order submitted, freight confirmed or driver details taken, grading
+  submitted, a load completed, a reminder set, a price offer answered), tell the caller you
+  will text them a confirmation. A confirmation text is sent automatically, so promise it
+  plainly, for example "I'll text you a confirmation now."
+""".strip()
+
 
 SELLER_SYSTEM_PROMPT = f"""
 {COMMON_RULES}
@@ -496,4 +514,5 @@ def prompt_for_role(role: str, state: SwineDeskState) -> str:
     else:
         base = SELLER_SYSTEM_PROMPT
     tier = _tier_context(state.user_tier)
-    return f"{base}\n\n{tier}\n\n{_state_summary(state)}"
+    channel_context = f"\n\n{VOICE_CONTEXT}" if state.channel == "voice" else ""
+    return f"{base}\n\n{tier}{channel_context}\n\n{_state_summary(state)}"

@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 ActorRole = Literal["seller", "buyer", "freight_operator", "vet", "broker", "unknown"]
 UserTier = Literal["cold", "warm", "known"]
+Channel = Literal["sms", "voice"]
 
 
 class SwineDeskState(BaseModel):
@@ -17,6 +18,9 @@ class SwineDeskState(BaseModel):
     phone: str = ""
     role: ActorRole = "unknown"
     user_tier: UserTier = "known"
+    # Transient: which channel this turn arrived on. Drives voice-specific phrasing
+    # and confirmation-text behavior. Never persisted to the session store.
+    channel: Channel = "sms"
     session_id: str = ""
     actor_id: str = ""
     contact_id: str = ""
