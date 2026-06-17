@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import FastAPI, Form, Header, HTTPException
+from fastapi import FastAPI, Form, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from twilio.twiml.messaging_response import MessagingResponse
+from twilio.twiml.voice_response import Gather, VoiceResponse
 
+from swinedesk import voice
 from swinedesk.agent import run_swinedesk_agent
 from swinedesk.backend_client import get_backend_client
 from swinedesk.daily_summary import start_daily_summary_task
@@ -27,7 +31,7 @@ from swinedesk.session import (
     update_session_from_state,
 )
 from swinedesk.settings import settings
-from swinedesk.state import SwineDeskState
+from swinedesk.state import Channel, SwineDeskState
 
 app = FastAPI(title="SwineDesk", version="0.2.0")
 logger = logging.getLogger(__name__)
@@ -36,6 +40,30 @@ UNKNOWN_PHONE_REPLY = (
     "Thanks for reaching out. We don't have your account on file yet. "
     "Someone from ELM Pork will contact you shortly."
 )
+
+# State-changing actions worth a written record. When one of these runs during a
+# voice call, the spoken reply is also texted to the caller as a confirmation.
+IMPORTANT_TOOL_PATHS = {
+    "/tools/market/create_sell_listing",
+    "/tools/market/create_buy_request",
+    "/tools/market/match_orders",
+    "/tools/market/reject_order",
+    "/tools/market/propose_price",
+    "/tools/market/respond_to_price_offer",
+    "/tools/orders/submit_purchase_order",
+    "/tools/loads/confirm_freight_assignment",
+    "/tools/loads/submit_freight_details",
+    "/tools/loads/complete_load",
+    "/tools/ops/submit_freight_by_text",
+    "/tools/grading/submit_grading",
+    "/tools/health/mark_cert_received",
+    "/tools/issues/report_delivery_issue",
+    "/tools/reminders/set_reminder",
+}
+
+VOICE_FALLBACK_REPLY = "Sorry, I didn't catch that. Could you say that again?"
+VOICE_GOODBYE = "Thanks for calling ELM Pork. Goodbye."
+VOICE_TECH_ISSUE = "Sorry, we're having a technical issue. Please try again in a minute."
 
 
 def _strip_formatting(text: str) -> str:
@@ -201,6 +229,143 @@ async def backend_sms_notification(
     return JSONResponse({"event": event, **result}, status_code=status_code)
 
 
+def _extract_executed_tool_paths(result: object) -> set[str]:
+    """Return the set of custom tool paths the agent executed this turn.
+
+    All custom tools route through the single ``execute_tool`` bridge, so the real
+    tool path lives in that call's ``tool_name`` argument.
+    """
+    paths: set[str] = set()
+    try:
+        messages = result.all_messages()  # type: ignore[attr-defined]
+    except Exception:
+        return paths
+    for message in messages:
+        for part in getattr(message, "parts", None) or []:
+            tool_name = getattr(part, "tool_name", None)
+            if tool_name is None:
+                continue
+            args = getattr(part, "args", None)
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except Exception:
+                    args = {}
+            if tool_name == "execute_tool" and isinstance(args, dict):
+                inner = args.get("tool_name")
+                if isinstance(inner, str):
+                    paths.add(inner)
+            else:
+                paths.add(str(tool_name))
+    return paths
+
+
+@dataclass
+class InboundResult:
+    """Outcome of processing one inbound user turn (SMS or voice)."""
+
+    reply: str
+    handled_unknown: bool = False
+    important: bool = False
+
+
+async def _process_inbound(phone: str, inbound: str, channel: Channel) -> InboundResult:
+    """Resolve the actor, run the role agent, and return the reply.
+
+    Shared by the SMS and voice webhooks so both channels do exactly the same
+    operations. ``channel`` only affects phrasing and confirmation-text behavior.
+    """
+    backend = get_backend_client()
+    session = await get_or_create(phone)
+    prior_messages = list(session.messages)
+    await add_message(phone, "user", inbound)
+
+    actor = await backend.resolve_actor_by_phone(phone)
+    resolved_role = str(actor.get("role", "unknown"))
+    # Internal broker: a phone on the allowlist always resolves to broker,
+    # regardless of what the backend phonebook says.
+    if _is_broker_phone(phone):
+        resolved_role = "broker"
+        actor = {**actor, "role": "broker"}
+    logger.info("Resolved inbound phone=%s to role=%s actor=%s", phone, resolved_role, actor)
+    actor_updates = {
+        "role": resolved_role,
+        "actor_id": str(actor.get("actor_id", actor.get("id", ""))),
+        "contact_id": str(actor.get("contact_id", actor.get("contactId", ""))),
+        "company_id": str(actor.get("company_id", actor.get("companyId", ""))),
+        "actor_profile": actor,
+        "known_site_ids": _normalize_site_ids(
+            actor.get("known_site_ids", actor.get("siteIds", []))
+        ),
+    }
+    session = await update_session(phone, actor_updates)
+
+    if resolved_role == "unknown":
+        logger.warning("Phone %s resolved as unknown; sending unknown-contact reply", phone)
+        inferred_intent = _infer_unknown_intent(inbound)
+        now_iso = datetime.now(timezone.utc).isoformat()
+        contact_attempt = {
+            "phone": phone,
+            "first_message": inbound,
+            "timestamp": now_iso,
+            "inferred_intent": inferred_intent,
+        }
+        await backend.create_unknown_contact_attempt(contact_attempt)
+
+        if _should_send_broker_alert(session.last_broker_alert_at):
+            await backend.notify_assigned_broker(
+                {
+                    "broker_phone": settings.effective_broker_alert_phone,
+                    "phone": phone,
+                    "timestamp": now_iso,
+                    "inferred_intent": inferred_intent,
+                    "message": _build_broker_alert(phone, inbound, inferred_intent),
+                }
+            )
+            await mark_broker_alert_sent(phone, now_iso)
+
+        await add_message(phone, "assistant", UNKNOWN_PHONE_REPLY)
+        return InboundResult(reply=UNKNOWN_PHONE_REPLY, handled_unknown=True)
+
+    state = session.to_state()
+    state.channel = channel
+    pending_offer = await get_pending_offer_for_phone(phone)
+    if pending_offer:
+        state.pending_offer = pending_offer
+        logger.info("Inbound phone=%s has pending price offer %s", phone, pending_offer.get("id"))
+    logger.info(
+        "Running agent: channel=%s role=%s tier=%s actor=%s workflow=%s",
+        channel,
+        resolved_role,
+        state.user_tier,
+        state.actor_id or "none",
+        state.active_workflow or "none",
+    )
+    result = await run_swinedesk_agent(
+        user_prompt=inbound,
+        state=state,
+        message_history=prior_messages,
+    )
+    raw_reply = str(result.output).strip() or "Got your message. Please retry in a minute."
+    reply = _strip_formatting(raw_reply)
+
+    executed = _extract_executed_tool_paths(result)
+    important = bool(executed & IMPORTANT_TOOL_PATHS)
+    logger.info(
+        "Agent reply: channel=%s role=%s chars=%d tools=%s important=%s",
+        channel,
+        resolved_role,
+        len(reply),
+        ",".join(sorted(executed)) or "none",
+        important,
+    )
+
+    await update_session_from_state(phone, state)
+    await add_message(phone, "assistant", reply)
+
+    return InboundResult(reply=reply, important=important)
+
+
 @app.post("/sms")
 async def sms_webhook(
     body: Annotated[str | None, Form(alias="Body")] = None,
@@ -216,96 +381,131 @@ async def sms_webhook(
         return Response(str(twiml), media_type="text/xml")
 
     try:
-        backend = get_backend_client()
-        session = await get_or_create(phone)
-        prior_messages = list(session.messages)
-        await add_message(phone, "user", inbound)
-
-        actor = await backend.resolve_actor_by_phone(phone)
-        resolved_role = str(actor.get("role", "unknown"))
-        # Internal broker over SMS: a phone on the allowlist always resolves to broker,
-        # regardless of what the backend phonebook says.
-        if _is_broker_phone(phone):
-            resolved_role = "broker"
-            actor = {**actor, "role": "broker"}
-        logger.info("Resolved inbound phone=%s to role=%s actor=%s", phone, resolved_role, actor)
-        actor_updates = {
-            "role": resolved_role,
-            "actor_id": str(actor.get("actor_id", actor.get("id", ""))),
-            "contact_id": str(actor.get("contact_id", actor.get("contactId", ""))),
-            "company_id": str(actor.get("company_id", actor.get("companyId", ""))),
-            "actor_profile": actor,
-            "known_site_ids": _normalize_site_ids(
-                actor.get("known_site_ids", actor.get("siteIds", []))
-            ),
-        }
-        session = await update_session(phone, actor_updates)
-
-        if resolved_role == "unknown":
-            logger.warning("Phone %s resolved as unknown; sending unknown-contact reply", phone)
-            inferred_intent = _infer_unknown_intent(inbound)
-            now_iso = datetime.now(timezone.utc).isoformat()
-            contact_attempt = {
-                "phone": phone,
-                "first_message": inbound,
-                "timestamp": now_iso,
-                "inferred_intent": inferred_intent,
-            }
-            await backend.create_unknown_contact_attempt(contact_attempt)
-
-            if _should_send_broker_alert(session.last_broker_alert_at):
-                await backend.notify_assigned_broker(
-                    {
-                        "broker_phone": settings.effective_broker_alert_phone,
-                        "phone": phone,
-                        "timestamp": now_iso,
-                        "inferred_intent": inferred_intent,
-                        "message": _build_broker_alert(phone, inbound, inferred_intent),
-                    }
-                )
-                await mark_broker_alert_sent(phone, now_iso)
-
-            twiml.message(UNKNOWN_PHONE_REPLY)
-            await add_message(phone, "assistant", UNKNOWN_PHONE_REPLY)
-            return Response(str(twiml), media_type="text/xml")
-
-        state = session.to_state()
-        pending_offer = await get_pending_offer_for_phone(phone)
-        if pending_offer:
-            state.pending_offer = pending_offer
-            logger.info("Inbound phone=%s has pending price offer %s", phone, pending_offer.get("id"))
-        logger.info(
-            "Running agent: role=%s tier=%s actor=%s workflow=%s",
-            resolved_role,
-            state.user_tier,
-            state.actor_id or "none",
-            state.active_workflow or "none",
-        )
-        result = await run_swinedesk_agent(
-            user_prompt=inbound,
-            state=state,
-            message_history=prior_messages,
-        )
-        raw_reply = str(result.output).strip() or "Got your message. Please retry in a minute."
-        reply = _strip_formatting(raw_reply)
-        logger.info(
-            "Agent reply: role=%s chars=%d tools_used=%s",
-            resolved_role,
-            len(reply),
-            getattr(result, "all_messages_json", None) and "yes" or "unknown",
-        )
-
-        await update_session_from_state(phone, state)
-        await add_message(phone, "assistant", reply)
-
-        for chunk in _chunk_message(reply, 1500):
+        result = await _process_inbound(phone, inbound, "sms")
+        for chunk in _chunk_message(result.reply, 1500):
             twiml.message(chunk)
-
     except Exception:
         logger.exception("SMS handler failed for phone=%s", phone)
         twiml.message("Having a technical issue. Try again in a minute.")
 
     return Response(str(twiml), media_type="text/xml")
+
+
+def _public_base_url(request: Request) -> str:
+    """Absolute base URL Twilio uses to fetch generated audio."""
+    if settings.public_base_url:
+        return settings.public_base_url.rstrip("/")
+    # Honor the proxy's forwarded scheme (Railway/Heroku terminate TLS upstream).
+    forwarded_proto = request.headers.get("x-forwarded-proto")
+    base = str(request.base_url).rstrip("/")
+    if forwarded_proto:
+        base = re.sub(r"^https?", forwarded_proto.split(",")[0].strip(), base)
+    return base
+
+
+async def _speak(target: VoiceResponse | Gather, text: str, request: Request,
+                 *, static: bool = False) -> None:
+    """Append spoken audio to a TwiML node, via ElevenLabs with a Twilio fallback."""
+    audio_id = (
+        await voice.synthesize_phrase_and_store(text)
+        if static
+        else await voice.synthesize_and_store(text)
+    )
+    if audio_id:
+        target.play(f"{_public_base_url(request)}/voice/audio/{audio_id}.mp3")
+    else:
+        target.say(text)
+
+
+def _new_gather() -> Gather:
+    """A speech-input Gather that posts the transcript back to /voice/gather."""
+    return Gather(
+        input="speech",
+        action="/voice/gather",
+        method="POST",
+        speechTimeout="auto",
+        speechModel="phone_call",
+        actionOnEmptyResult=True,
+        language="en-US",
+    )
+
+
+@app.post("/voice")
+async def voice_webhook(request: Request) -> Response:
+    """Inbound call entrypoint: greet the caller and listen for speech."""
+    response = VoiceResponse()
+    if not voice.voice_available():
+        response.say(VOICE_TECH_ISSUE)
+        response.hangup()
+        return Response(str(response), media_type="text/xml")
+
+    gather = _new_gather()
+    await _speak(gather, settings.voice_greeting, request, static=True)
+    response.append(gather)
+    # Reached only if the caller stays silent past the gather timeout.
+    await _speak(response, VOICE_GOODBYE, request, static=True)
+    response.hangup()
+    return Response(str(response), media_type="text/xml")
+
+
+@app.post("/voice/gather")
+async def voice_gather(
+    request: Request,
+    speech_result: Annotated[str | None, Form(alias="SpeechResult")] = None,
+    from_phone: Annotated[str | None, Form(alias="From")] = None,
+) -> Response:
+    """Handle one spoken turn: run the agent, speak the reply, keep listening."""
+    response = VoiceResponse()
+    inbound = (speech_result or "").strip()
+    phone = (from_phone or "").strip()
+    logger.info("Inbound voice turn: from=%s speech=%r", phone, inbound)
+
+    if not phone:
+        await _speak(response, VOICE_TECH_ISSUE, request, static=True)
+        response.hangup()
+        return Response(str(response), media_type="text/xml")
+
+    if not inbound:
+        gather = _new_gather()
+        await _speak(gather, VOICE_FALLBACK_REPLY, request, static=True)
+        response.append(gather)
+        await _speak(response, VOICE_GOODBYE, request, static=True)
+        response.hangup()
+        return Response(str(response), media_type="text/xml")
+
+    try:
+        result = await _process_inbound(phone, inbound, "voice")
+    except Exception:
+        logger.exception("Voice handler failed for phone=%s", phone)
+        await _speak(response, VOICE_TECH_ISSUE, request, static=True)
+        response.hangup()
+        return Response(str(response), media_type="text/xml")
+
+    # Important actions get a written confirmation texted to the caller.
+    if result.important and result.reply:
+        sms_result = await send_sms_notification(phone, result.reply)
+        logger.info("Voice confirmation SMS to %s: %s", phone, sms_result.get("success"))
+
+    if result.handled_unknown:
+        await _speak(response, result.reply, request)
+        response.hangup()
+        return Response(str(response), media_type="text/xml")
+
+    gather = _new_gather()
+    await _speak(gather, result.reply, request)
+    response.append(gather)
+    await _speak(response, VOICE_GOODBYE, request, static=True)
+    response.hangup()
+    return Response(str(response), media_type="text/xml")
+
+
+@app.get("/voice/audio/{audio_id}.mp3")
+async def voice_audio(audio_id: str) -> Response:
+    """Serve cached TTS audio for Twilio <Play>."""
+    data = voice.get_audio(audio_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Audio not found")
+    return Response(content=data, media_type="audio/mpeg")
 
 
 @app.post("/docs/health-cert")
