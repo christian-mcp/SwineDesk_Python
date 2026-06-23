@@ -9,21 +9,22 @@ The MVP remains in this repository (`index.js`, `claude.js`, `broker.js`, etc.).
 - FastAPI webhook app with:
   - `GET /` health check
   - `POST /sms` Twilio SMS webhook
-  - `POST /voice` + `POST /voice/gather` Twilio Voice webhooks (talk to the bot by phone)
+  - `POST /voice`, `POST /voice/gather`, `POST /voice/poll` Twilio Voice webhooks (talk to the bot by phone)
   - `GET /voice/audio/{id}.mp3` serves ElevenLabs-synthesized reply audio for Twilio `<Play>`
+  - `POST /notifications/sms` backend-triggered outbound SMS (bearer-token protected)
   - `POST /docs/health-cert` health certificate webhook
-- Two separate role-specific agents (`producer` and `broker`), selected from backend role lookup
+- Six role-specific agents (`seller`, `buyer`, `vet`, `freight`, `driver`, `broker`), selected from backend phone→role lookup
 - One-session-per-phone in-memory session store (same model as current MVP)
 - Local agent wiring with filesystem-discovered tools and per-role tool allowlists
-- Tool stubs grouped by domain (`orders`, `clients`, `vaccines`, `barns`, `loads`, `notify`)
-- Backend API client wrapper for future integration
+- Tools grouped by domain (`market`, `orders`, `loads`, `driver`, `grading`, `health`, `crm`, `sites`, `actors`, `reminders`, `ops`, `issues`)
+- Backend API client wrapper for the Java REST API
 
 ## Architecture
 
 ```mermaid
 flowchart TD
     smsWebhook["POST /sms"] --> resolveRole["resolve_phone_role(phone)"]
-    resolveRole --> routeAgent["Route to producer_agent or broker_agent"]
+    resolveRole --> routeAgent["Route to per-role agent (seller/buyer/vet/freight/driver/broker)"]
     routeAgent --> runAgent["Selected pydantic-ai agent run()"]
     runAgent --> executeTool["execute_tool"]
     executeTool --> ordersTools["/tools/orders/*"]
@@ -46,7 +47,7 @@ flowchart TD
 - `.env.example` - environment variables template
 - `swinedesk/app.py` - FastAPI app and endpoints
 - `swinedesk/agent.py` - role-routed pydantic-ai setup and runner function
-- `swinedesk/prompts.py` - producer and broker prompts
+- `swinedesk/prompts.py` - per-role agent prompts
 - `swinedesk/state.py` - minimal structured state model
 - `swinedesk/session.py` - in-memory per-phone session management
 - `swinedesk/backend_client.py` - external backend API wrapper
@@ -74,7 +75,7 @@ Every tool is a `Tool` subclass with:
 - `ARGUMENTS`
 - `async run(arguments, state) -> dict`
 
-All current tool files are stubs with `TODO` markers for backend integration.
+Tools call the Java backend through `BackendClient`.
 
 ### Adding a new tool
 
@@ -82,7 +83,7 @@ All current tool files are stubs with `TODO` markers for backend integration.
 2. Add `tool.py` with a `Tool` subclass.
 3. Set `TOOL_PATH` to `/tools/<category>/<tool_name>`.
 4. Add argument schema with `Arg(...)`.
-5. Implement the backend API call in `run(...)`.
+5. Implement the backend API call in `run(...)`, then add its `TOOL_PATH` to the appropriate role allowlist in `swinedesk/agent.py`.
 
 The loader discovers tools from filesystem path conventions, so no central registry edit is required.
 
@@ -95,10 +96,13 @@ No `expert_agents` dependency is required.
 
 ## Role-based tool isolation
 
-The runtime initializes two independent agents with different custom tool registries:
+The runtime initializes one independent agent per role, each with its own custom tool registry (allowlists defined in `swinedesk/agent.py`):
 
-- Producer agent: sell/buy order creation, onboarding, vaccine order flow, barn listing/finding, load detail.
-- Broker agent: operational tooling like listings/matches, load lists, freight assignment, client notes, and notifications.
+- **seller / buyer**: market listings/requests, order creation, price offers, auctions, load detail.
+- **broker**: operational tooling — listings/matches, order matching, freight assignment (`assign_freight_company`), grading adjustment (`record_grading_adjustment`), blasts, reminders, client notes, and notifications.
+- **vet**: vet-pending loads, health-cert status, vet-to-vet confirmation (`confirm_vet_to_vet`).
+- **freight**: freight loads, freight-detail submission, assignment confirmation.
+- **driver**: my loads (`get_my_loads`), report pickup (`report_pickup`), report offload (`report_offload`).
 
 This prevents the model from seeing or calling role-inappropriate custom tools in normal operation.
 
@@ -134,6 +138,17 @@ Update `.env` with:
 
 ```bash
 uvicorn swinedesk.app:app --reload --port 3000
+```
+
+### Testing the post-deal ladders
+
+The Java backend exposes `POST /v1/query/admin/run-scheduler`, which advances every
+load through the backend state machine and flushes due message/email tasks on demand
+(instead of waiting for cron). Call it after a deal step to fire the next reminder /
+notification without waiting:
+
+```bash
+curl -s -X POST http://localhost:8080/v1/query/admin/run-scheduler
 ```
 
 ## Twilio wiring
