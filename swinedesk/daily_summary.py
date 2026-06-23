@@ -28,8 +28,10 @@ def build_recap_message(response: dict[str, Any]) -> str:
     Shared by the on-demand ``get_daily_recap`` tool and the scheduled send so
     both render identically.
     """
+    label = response.get("window_label")
+    header = f"Recap ({label}):" if label else f"Recap for {response.get('date', 'today')}:"
     lines = [
-        f"Recap for {response.get('date', 'today')}:",
+        header,
         f"  New listings: {response.get('new_listings', 0)} ({response.get('head_listed', 0)} head)",
         f"  New requests: {response.get('new_requests', 0)} ({response.get('head_requested', 0)} head)",
         f"  Pending tasks: {response.get('pending_tasks', 0)}",

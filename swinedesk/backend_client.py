@@ -341,11 +341,27 @@ class BackendClient:
         except httpx.HTTPError:
             return {"supply": [], "demand": [], "supply_count": 0, "demand_count": 0}
 
-    async def get_daily_recap(self) -> dict[str, Any]:
+    async def get_daily_recap(
+        self, *, days: int | None = None, hours: int | None = None
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {}
+        if days is not None:
+            params["days"] = days
+        if hours is not None:
+            params["hours"] = hours
         try:
-            return await self.get("/v1/query/recap")
+            return await self.get("/v1/query/recap", params=params or None)
         except httpx.HTTPError:
             return {"new_listings": 0, "new_requests": 0, "items": []}
+
+    async def get_upcoming_loads(self, *, days: int | None = None) -> dict[str, Any]:
+        params: dict[str, Any] = {}
+        if days is not None:
+            params["days"] = days
+        try:
+            return await self.get("/v1/query/upcoming", params=params or None)
+        except httpx.HTTPError:
+            return {"load_count": 0, "total_head": 0, "items": []}
 
     async def complete_load(self, load_id: str) -> dict[str, Any]:
         return await self.post(f"/v1/query/loads/{load_id}/complete")
@@ -382,16 +398,39 @@ class BackendClient:
         return await self.post(f"/v1/query/orders/{short_id}/close-auction")
 
     async def match_orders(
-        self, buy_order_id: str, sell_order_id: str, regrade: str = ""
+        self,
+        buy_order_id: str,
+        sell_order_id: str,
+        regrade: str = "",
+        extras: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        payload = {"buy_order_id": buy_order_id, "sell_order_id": sell_order_id}
+        # extras carries the deal-confirmation fields (vets, scheduled date, sites,
+        # freight, vet-to-vet skip flag) that let the backend create the load and run
+        # the vet-to-vet cascade. Empty values are dropped so the backend keeps its
+        # own fallbacks (e.g. the listing's ship date).
+        payload: dict[str, Any] = {"buy_order_id": buy_order_id, "sell_order_id": sell_order_id}
         if regrade:
             payload["regrade"] = regrade
+        if extras:
+            for key, value in extras.items():
+                if value not in (None, ""):
+                    payload[key] = value
         return await self.post("/v1/query/match-orders", payload)
 
     async def reject_order(self, order_id: str, reason: str = "") -> dict[str, Any]:
         payload = {"order_id": order_id, "reason": reason}
         return await self.post("/v1/query/reject-order", payload)
+
+    async def vet_confirm(self, order_id: str) -> dict[str, Any]:
+        """Buyer's vet confirms the vet-to-vet went well; advances the deal past the vet gate."""
+        return await self.post(f"/v1/query/orders/{order_id}/vet-confirm")
+
+    async def vet_reject(self, order_id: str, reason: str = "") -> dict[str, Any]:
+        """Buyer's vet wants the broker to call before signing off; flags for broker follow-up."""
+        payload: dict[str, Any] = {}
+        if reason:
+            payload["reason"] = reason
+        return await self.post(f"/v1/query/orders/{order_id}/vet-reject", payload)
 
     async def update_order_price(
         self, order_id: str, price: float, side: str = ""

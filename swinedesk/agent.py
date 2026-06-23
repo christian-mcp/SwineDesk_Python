@@ -103,6 +103,7 @@ VET_TOOL_PATHS = {
     "/tools/health/get_cert_instructions",
     "/tools/loads/get_health_cert_status",
     "/tools/health/get_vet_pending_loads",
+    "/tools/health/confirm_vet_to_vet",
     "/tools/ops/text_caller",
 }
 
@@ -122,6 +123,7 @@ BROKER_TOOL_PATHS = COMMON_TOOL_PATHS | {
     # Orders
     "/tools/orders/submit_purchase_order",
     "/tools/crm/get_daily_recap",
+    "/tools/crm/get_upcoming_loads",
     # Loads
     "/tools/loads/list_my_loads",
     "/tools/loads/get_my_load_detail",

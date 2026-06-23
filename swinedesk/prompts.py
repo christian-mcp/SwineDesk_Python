@@ -307,10 +307,21 @@ Supported jobs:
 2. Check whether a cert is still needed for a load
 3. Check whether a cert was received
 4. View loads where a cert is pending
+5. Confirm a vet-to-vet handoff
 
 Standard instruction:
 Email cert PDF or photo to {settings.docs_email} - subject line: HEALTH CERT [LOAD ID].
 Reply here once sent.
+
+Vet-to-vet handoff:
+If active_workflow is "awaiting_vet_to_vet_confirm" (or the vet otherwise references a
+vet-to-vet we asked them to complete), the buyer's vet is replying about it. Use
+confirm_vet_to_vet:
+- If they say it went well / all good / confirmed / pigs look fine -> confirm_vet_to_vet
+  with confirm=true. The order id is already on the session; you do not need to ask for it.
+- If they want the broker to call them / something to discuss / a concern -> confirm_vet_to_vet
+  with confirm=false and put their concern in reason.
+Do not ask them to click any link. Just take the confirm or the call request.
 """.strip()
 
 BROKER_SYSTEM_PROMPT = f"""
@@ -325,7 +336,10 @@ Supported jobs:
 3. View pending tasks
 4. Send a message to any user on their behalf
 5. View open supply and demand
-6. Today's recap
+6. Recap of recent desk activity over any look-back window — daily (default, last 24h),
+   weekly (days=7), or a custom window the broker names. Use get_daily_recap with `days`/`hours`.
+   For loads/deliveries coming UP in the future ("what's coming up", "loads next week",
+   "deliveries in the next 3 days"), use get_upcoming_loads with `days` for the window.
 7. Set follow-up reminders for any user or deal
 8. Pair an open buy request with an open sell listing to close a deal
 9. Find contacts by role or state (e.g. "show me Iowa buyers", "list all vets in MN")
@@ -422,6 +436,17 @@ Pairing deals:
   the buyer is automatically texted those three questions right after the pair. If the
   broker says no or doesn't mention it, pass nothing. The buyer answers ELM directly over
   text; their replies come back to the desk.
+- Vet-to-vet and ship date are also deal-time, set in this SAME confirmation step. Ask once,
+  together with regrade/add-ons: "Is a vet-to-vet needed? If so, who's the seller's vet and
+  the buyer's vet? And what's the ship date?"
+  - If vet-to-vet IS needed: call match_orders with vet_to_vet_needed=true plus seller_vet and
+    buyer_vet (names or phones, however the broker gives them). The bot then texts both vets and
+    HOLDS the broker note until the buyer's vet confirms — do NOT send the note yourself, and
+    tell the broker you've kicked off the vet-to-vet and the note goes out once the buyer's vet
+    replies all-good.
+  - If NOT needed: call match_orders with vet_to_vet_needed=false; the broker note goes out now.
+  - Pass scheduled_date (YYYY-MM-DD) whenever the broker gives a ship date; if omitted, the
+    listing's ship date is used for the load.
 - After a successful pair, give a one-line confirmation: who sold to whom, head, pig type.
   If the tool result includes an ELM margin (expected_profit / margin_per_head), state it:
   e.g. "ELM margin: $5.00/head, $9,000 total." The margin is internal ELM economics and

@@ -123,6 +123,50 @@ def _is_yes(raw: Any) -> bool:
     return str(raw or "").strip().lower() in ("1", "true", "yes", "y", "on")
 
 
+def _looks_like_phone(raw: str) -> bool:
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    return raw.strip().startswith("+") or (digits and len(digits) >= 7 and digits == raw.strip().lstrip("+").replace("-", "").replace(" ", "").replace("(", "").replace(")", ""))
+
+
+_HONORIFICS = {"dr", "dr.", "doctor", "mr", "mr.", "ms", "ms.", "mrs", "mrs."}
+
+
+def _name_tokens(text: str) -> set[str]:
+    """Lowercase word tokens with punctuation and honorifics stripped."""
+    cleaned = text.lower().replace(".", " ").replace(",", " ")
+    return {tok for tok in cleaned.split() if tok and tok not in _HONORIFICS}
+
+
+async def _resolve_contact(backend: Any, raw: Any, role: str) -> tuple[str | None, str | None]:
+    """Resolve a free-form 'name or phone' to (actor_id, phone) via the backend phonebook
+    for the given role. Returns (None, phone) when the input is itself a phone, and
+    (None, None) when nothing matches (caller then surfaces a 'couldn't find' note).
+
+    Matching is token-overlap on the contact's first name (the contacts endpoint exposes
+    first_name + company but no last name) or company, with honorifics ignored - so
+    'Dr Ana Reyes' matches a contact whose first name is stored as 'Dr Ana'."""
+    text = str(raw or "").strip()
+    if not text:
+        return None, None
+    if _looks_like_phone(text):
+        return None, text
+    want = _name_tokens(text)
+    try:
+        data = await backend.list_contacts(role=role)
+    except Exception:
+        logger.exception("Failed to look up %s contacts for '%s'", role, text)
+        return None, None
+    contacts = data.get("contacts", []) if isinstance(data, dict) else []
+    for contact in contacts:
+        first_tokens = _name_tokens(str(contact.get("first_name") or ""))
+        company = str(contact.get("company") or "").strip().lower()
+        if want and first_tokens and (want & first_tokens):
+            return contact.get("actor_id"), contact.get("phone")
+        if company and (company in text.lower() or any(tok in company for tok in want)):
+            return contact.get("actor_id"), contact.get("phone")
+    return None, None
+
+
 async def _send_buyer_addons(phone: str | None, first_name: str | None) -> bool:
     """Text the buyer the optional add-on questions after a deal is paired.
     Returns True if the SMS was sent. Asked by the broker at deal time, never at intake."""
@@ -167,6 +211,32 @@ class MatchOrders(Tool, name="match_orders"):
             "Omit otherwise.",
             optional=True,
         ),
+        "vet_to_vet_needed": Arg(
+            "Whether a vet-to-vet health handoff is needed for this deal (the broker is "
+            "asked this when confirming). 'yes' runs vet-to-vet (requires both vets below); "
+            "'no' skips it. Omit if the broker has not answered yet.",
+            optional=True,
+        ),
+        "seller_vet": Arg(
+            "The seller's vet for this deal - a name (e.g. 'Dr Ana Reyes') or phone number. "
+            "Required to run vet-to-vet. Omit otherwise.",
+            optional=True,
+        ),
+        "buyer_vet": Arg(
+            "The buyer's vet for this deal - a name or phone number. Required to run "
+            "vet-to-vet. Omit otherwise.",
+            optional=True,
+        ),
+        "scheduled_date": Arg(
+            "Ship/delivery date for the load, as YYYY-MM-DD. Defaults to the sell listing's "
+            "ship date if omitted.",
+            optional=True,
+        ),
+        "freight_company": Arg(
+            "Optional freight company for the load - a name or phone. Usually left as TBD at "
+            "confirm and assigned a few days before the load; omit unless the broker names it now.",
+            optional=True,
+        ),
     }
 
     async def run(self, arguments: dict[str, Any], state: Any) -> dict[str, Any]:
@@ -188,7 +258,43 @@ class MatchOrders(Tool, name="match_orders"):
         # (forward-compatible, ignored by the backend today) and surfaced on the deal
         # confirmation email + broker summary below.
         backend = get_backend_client()
-        response = await backend.match_orders(buy_id, sell_id, regrade=regrade)
+
+        # Build the deal-confirmation extras: the two vets (only when vet-to-vet is
+        # explicitly wanted), the ship date, and an optional freight company. These let
+        # the backend create the load and run the vet-to-vet cascade. When the broker
+        # hasn't answered the vet-to-vet question we send nothing, so the deal flows
+        # exactly as before (vet-to-vet auto-skips).
+        extras: dict[str, Any] = {}
+        needed_raw = arguments.get("vet_to_vet_needed")
+        vet_to_vet_needed = _is_yes(needed_raw) if str(needed_raw or "").strip() else None
+        if vet_to_vet_needed:
+            sv_guid, sv_phone = await _resolve_contact(backend, arguments.get("seller_vet"), "vet")
+            bv_guid, bv_phone = await _resolve_contact(backend, arguments.get("buyer_vet"), "vet")
+            if sv_guid:
+                extras["seller_vet_guid"] = sv_guid
+            elif sv_phone:
+                extras["seller_vet_phone"] = sv_phone
+            if bv_guid:
+                extras["buyer_vet_guid"] = bv_guid
+            elif bv_phone:
+                extras["buyer_vet_phone"] = bv_phone
+            extras["is_vet_to_vet_skipped"] = False
+        elif vet_to_vet_needed is False:
+            extras["is_vet_to_vet_skipped"] = True
+
+        scheduled_date = str(arguments.get("scheduled_date", "")).strip()
+        if scheduled_date:
+            extras["scheduled_date"] = scheduled_date
+
+        freight_raw = str(arguments.get("freight_company", "")).strip()
+        if freight_raw:
+            fg, fp = await _resolve_contact(backend, freight_raw, "freight")
+            if fg:
+                extras["freight_guid"] = fg
+            elif fp:
+                extras["freight_phone"] = fp
+
+        response = await backend.match_orders(buy_id, sell_id, regrade=regrade, extras=extras)
 
         if not response.get("success"):
             return {
@@ -196,6 +302,12 @@ class MatchOrders(Tool, name="match_orders"):
                 "buy_order_id": buy_id,
                 "sell_order_id": sell_id,
             }
+
+        # The backend reports whether the vet-to-vet handoff is actually running for this
+        # deal (both vets resolved + not skipped). When it is, hold the broker-confirmation
+        # note until the buyer's vet confirms (handled by the vet-to-vet flow); otherwise
+        # send it now as before.
+        vet_to_vet_running = response.get("vet_to_vet_skipped") is False
 
         await _notify_party(
             response.get("seller_phone"),
@@ -210,12 +322,18 @@ class MatchOrders(Tool, name="match_orders"):
             response.get("retired_order_id") or buy_id,
         )
 
-        await _send_deal_confirmation_emails(response, regrade=regrade)
+        # Hold the broker-confirmation PDF/email until vet-to-vet completes. When there's
+        # no vet-to-vet (skipped), the deal is done now, so send it immediately as before.
+        if not vet_to_vet_running:
+            await _send_deal_confirmation_emails(response, regrade=regrade)
 
         traded_ref = response.get("traded_order_id") or sell_id
         head_count = response.get("head") or "?"
         market_label = response.get("market") or ""
-        await _notify_ops_role(settings.vet_notify_phone, "vet", traded_ref, head_count, market_label)
+        # When vet-to-vet is running, the backend already texts the two named vets the
+        # proper handoff messages, so skip the generic vet heads-up to avoid double-texting.
+        if not vet_to_vet_running:
+            await _notify_ops_role(settings.vet_notify_phone, "vet", traded_ref, head_count, market_label)
         await _notify_ops_role(settings.freight_notify_phone, "freight", traded_ref, head_count, market_label)
 
         # Optional: text the buyer the add-on questions, but only if the broker confirmed it
@@ -243,8 +361,33 @@ class MatchOrders(Tool, name="match_orders"):
 
         addon_note = " Add-on options texted to the buyer." if addons_sent else ""
 
+        # Vet-to-vet status for the broker.
+        if vet_to_vet_running:
+            sv = response.get("seller_vet") or "the seller's vet"
+            bv = response.get("buyer_vet") or "the buyer's vet"
+            vet_note = (
+                f" Vet-to-vet kicked off: texted {sv} (seller's vet) and {bv} (buyer's vet). "
+                "I'll send the broker note to all parties once the buyer's vet confirms."
+            )
+        elif response.get("vet_to_vet_skipped") is True and vet_to_vet_needed is False:
+            vet_note = " Vet-to-vet skipped; broker note sent."
+        else:
+            vet_note = ""
+        if response.get("vet_warning"):
+            vet_note += f" NOTE: {response.get('vet_warning')}"
+
+        # Load schedule for the deal.
+        if response.get("load_id"):
+            sched = response.get("load_scheduled")
+            sched_day = sched.split("T")[0] if isinstance(sched, str) and "T" in sched else sched
+            load_note = f" Load {response.get('load_id')} scheduled for {sched_day}." if sched_day else f" Load {response.get('load_id')} created."
+        else:
+            load_note = ""
+        if response.get("load_warning"):
+            load_note += f" NOTE: {response.get('load_warning')}"
+
         summary = (
             f"Done. {seller} -> {buyer}, {head} {market}. "
-            f"Deal {traded} is TRADED.{profit_note}{regrade_note}{addon_note}"
+            f"Deal {traded} is confirmed.{profit_note}{regrade_note}{vet_note}{load_note}{addon_note}"
         )
         return {"result": summary, "buyer_addons_sent": addons_sent, **response}

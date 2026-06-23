@@ -226,6 +226,51 @@ async def health() -> JSONResponse:
     )
 
 
+# Maps a backend notification action to the workflow tag we stamp on the recipient's
+# session, so their SMS reply is understood without them quoting an order/load id.
+_ACTION_WORKFLOW: dict[str, str] = {
+    "BUYER_VET_CONFIRM_MESSAGE": "awaiting_vet_to_vet_confirm",
+    "SELLER_VET_TO_REACH_OUT_MESSAGE": "vet_to_vet_seller_heads_up",
+    "HEALTH_CERTIFICATE_FORM_ACTION": "awaiting_health_cert",
+    "HEALTH_CERT_REMINDER": "awaiting_health_cert",
+    "HEALTH_CERT_OVERDUE": "awaiting_health_cert",
+    "VET_CHECK_REMINDER": "awaiting_health_cert",
+    "FREIGHT_NOMINATION_REMINDER": "awaiting_freight_assignment",
+    "DRIVER_MESSAGE_SCALE_TICKET": "awaiting_driver_action",
+    "DRIVER_MESSAGE_HEALTH_CERTIFICATE": "awaiting_driver_action",
+    "BUYER_NOMINATION_REMINDER": "awaiting_buyer_nomination",
+    "BUYER_GRADING_DAY_AFTER_SCHEDULED_DATE": "awaiting_grading",
+    "BUYER_GRADING_2_DAYS_AFTER_SCHEDULED_DATE": "awaiting_grading",
+    "SITE_MANAGER_GRADING_SCHEDULED_DATE": "awaiting_grading",
+    "SITE_MANAGER_GRADING_DAY_AFTER_SCHEDULED_DATE": "awaiting_grading",
+    "SITE_MANAGER_GRADING_2_DAYS_AFTER_SCHEDULED_DATE": "awaiting_grading",
+}
+
+
+async def _seed_recipient_session(to_phone: str, event: dict) -> None:
+    """Seed the recipient's session with the order/load this notification is about plus a
+    workflow tag, so a reply ('all good', 'picked them up', a cert photo) routes to the
+    right intent without the recipient quoting an id. Best-effort; never blocks the send."""
+    if not to_phone or not isinstance(event, dict):
+        return
+    updates: dict[str, object] = {}
+    order_id = str(event.get("order_short_id") or "").strip()
+    load_id = str(event.get("load_short_id") or "").strip()
+    if order_id:
+        updates["referenced_order_ids"] = [order_id]
+    if load_id:
+        updates["referenced_load_ids"] = [load_id]
+    action = str(event.get("notification_action_type") or "").strip().upper()
+    workflow = _ACTION_WORKFLOW.get(action)
+    if workflow:
+        updates["active_workflow"] = workflow
+    if updates:
+        try:
+            await update_session(to_phone, updates)
+        except Exception:
+            logger.exception("Failed to seed recipient session for %s", to_phone)
+
+
 @app.post("/notifications/sms")
 async def backend_sms_notification(
     payload: dict,
@@ -248,6 +293,10 @@ async def backend_sms_notification(
             {"success": False, "error": "Missing to_phone or message."},
             status_code=400,
         )
+
+    # Seed context BEFORE sending so an immediate reply already has it (and so it works
+    # even when Twilio is offline on stage and we simulate the inbound reply by hand).
+    await _seed_recipient_session(to_phone, event)
 
     result = await send_sms_notification(to_phone, message)
     status_code = 200 if result.get("success") else 502
