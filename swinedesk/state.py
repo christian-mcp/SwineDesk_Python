@@ -7,7 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
-ActorRole = Literal["seller", "buyer", "freight_operator", "vet", "broker", "unknown"]
+ActorRole = Literal["seller", "buyer", "freight_operator", "driver", "vet", "broker", "unknown"]
 UserTier = Literal["cold", "warm", "known"]
 Channel = Literal["sms", "voice"]
 

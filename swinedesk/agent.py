@@ -107,6 +107,15 @@ VET_TOOL_PATHS = {
     "/tools/ops/text_caller",
 }
 
+DRIVER_TOOL_PATHS = {
+    "/tools/actors/get_actor_profile",
+    "/tools/driver/get_my_loads",
+    "/tools/driver/report_pickup",
+    "/tools/driver/report_offload",
+    "/tools/issues/report_delivery_issue",
+    "/tools/ops/text_caller",
+}
+
 BROKER_TOOL_PATHS = COMMON_TOOL_PATHS | {
     # Market
     "/tools/market/create_sell_listing",
@@ -162,6 +171,7 @@ ROLE_REGISTRIES = {
     "seller": _filter_registry(ALL_CUSTOM_TOOLS, SELLER_TOOL_PATHS),
     "buyer": _filter_registry(ALL_CUSTOM_TOOLS, BUYER_TOOL_PATHS),
     "freight_operator": _filter_registry(ALL_CUSTOM_TOOLS, FREIGHT_TOOL_PATHS),
+    "driver": _filter_registry(ALL_CUSTOM_TOOLS, DRIVER_TOOL_PATHS),
     "vet": _filter_registry(ALL_CUSTOM_TOOLS, VET_TOOL_PATHS),
     "broker": _filter_registry(ALL_CUSTOM_TOOLS, BROKER_TOOL_PATHS),
 }

@@ -18,6 +18,7 @@ ROLE_ALIASES = {
     "buyer": "buyer",
     "freight": "freight_operator",
     "freight_operator": "freight_operator",
+    "driver": "driver",
     "vet": "vet",
     "broker": "broker",
     "unknown": "unknown",
@@ -232,6 +233,40 @@ class BackendClient:
             return await self.post("/v1/sms/freight/details", {"actorId": actor_id, **payload})
         except httpx.HTTPError:
             return {"success": False, "msg": "Freight details submission unavailable."}
+
+    async def get_driver_loads(self, phone: str, window: str = "") -> dict[str, Any]:
+        """Loads assigned to a driver (matched by their phone in DeliveryDetails)."""
+        params: dict[str, Any] = {"phone": phone}
+        if window:
+            params["window"] = window
+        try:
+            return await self.get("/v1/query/driver/loads", params=params)
+        except httpx.HTTPError:
+            return {"success": False, "loads": [], "load_ids": []}
+
+    async def driver_pickup(self, phone: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Driver reports pickup + ETA; returns counterparty-safe context to notify the buyer/barn/broker."""
+        body: dict[str, Any] = {"phone": phone}
+        if payload:
+            for key, value in payload.items():
+                if value not in (None, ""):
+                    body[key] = value
+        try:
+            return await self.post("/v1/query/driver/pickup", body)
+        except httpx.HTTPError as exc:
+            return {"success": False, "error": f"Pickup update unavailable: {exc}"}
+
+    async def driver_offload(self, phone: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Driver reports the load offloaded; returns broker + buyer/barn contacts."""
+        body: dict[str, Any] = {"phone": phone}
+        if payload:
+            for key, value in payload.items():
+                if value not in (None, ""):
+                    body[key] = value
+        try:
+            return await self.post("/v1/query/driver/offload", body)
+        except httpx.HTTPError as exc:
+            return {"success": False, "error": f"Offload update unavailable: {exc}"}
 
     async def get_health_cert_status(self, actor_id: str, role: str, load_id: str) -> dict[str, Any]:
         try:
