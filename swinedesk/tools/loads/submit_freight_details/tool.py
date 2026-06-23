@@ -13,7 +13,7 @@ class SubmitFreightDetails(Tool, name="submit_freight_details"):
     TOOL_PATH = "/tools/loads/submit_freight_details"
     DESCRIPTION = "Submit driver, truck, and ETA details for a freight load."
     ARGUMENTS = {
-        "load_id": Arg("Load identifier"),
+        "load_id": Arg("Load identifier. Omit to use the load the bot last pinged you about.", optional=True),
         "driver_first": Arg("Driver first name"),
         "driver_last": Arg("Driver last name"),
         "driver_phone": Arg("Driver phone number"),
@@ -34,12 +34,19 @@ class SubmitFreightDetails(Tool, name="submit_freight_details"):
 
         load_id = str(arguments.get("load_id", "")).strip()
         if not load_id:
-            return {"error": "load_id is required."}
+            # Fall back to the load the driver-assignment reminder seeded on the session.
+            refs = list(getattr(state, "referenced_load_ids", []) or [])
+            load_id = refs[-1] if refs else ""
+        if not load_id:
+            return {"error": "Which load is this for? I don't have one pending for you."}
+        arguments["load_id"] = load_id
 
         merge_workflow_draft(state, "submit_freight_details", arguments)
         backend = get_backend_client()
         response = await backend.submit_freight_details(actor_id, arguments)
         remember_load(state, load_id)
+        if getattr(state, "active_workflow", None) == "awaiting_driver_assignment":
+            state.active_workflow = None
         return {
             "result": response.get("msg", f"Submitted freight details for {load_id}."),
             **response,

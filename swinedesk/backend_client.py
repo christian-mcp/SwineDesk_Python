@@ -432,6 +432,17 @@ class BackendClient:
             payload["reason"] = reason
         return await self.post(f"/v1/query/orders/{order_id}/vet-reject", payload)
 
+    async def assign_freight_company(
+        self, order_id: str, extras: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Broker assigns a freight company (by guid or phone) to a deal's load(s)."""
+        payload: dict[str, Any] = {}
+        if extras:
+            for key, value in extras.items():
+                if value not in (None, ""):
+                    payload[key] = value
+        return await self.post(f"/v1/query/orders/{order_id}/assign-freight", payload)
+
     async def update_order_price(
         self, order_id: str, price: float, side: str = ""
     ) -> dict[str, Any]:

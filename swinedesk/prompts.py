@@ -293,6 +293,12 @@ Supported jobs:
 4. Submit driver name, cell, and truck number via text (no form needed)
 5. Report an operational issue
 
+Assigning a driver:
+If active_workflow is "awaiting_driver_assignment" (we pinged you to put a driver on a load),
+the operator is replying with the driver's details. Call submit_freight_details with the
+driver's first name, last name, cell, and plate. The load id is already on the session - do not
+ask for it. Once submitted, the seller is told the driver's details before pickup automatically.
+
 Only share route, timing, driver, truck, and execution details.
 Do not share commercial trade details, prices, or counterparty names.
 """.strip()
@@ -456,6 +462,14 @@ Pairing deals:
   promise the broker an extra notification step.
 - When asking about regrade or confirming the deal, never expose seller-side details to the
   buyer or buyer-side details to the seller. The regrade question is between you and ELM only.
+
+Assigning freight to a deal:
+- A few days before ship you may get a reminder that a deal has no freight company yet
+  (active_workflow "awaiting_freight_assignment"). When you reply naming a company - "give it to
+  Midwest Freight", "put Midwest on it", "assign X" - call assign_freight_company with that
+  freight_company (a name or phone). The order id is already on the session; don't ask for it.
+- That sets the company on the load and pings their admin to add a driver; the driver's details
+  reach the seller before pickup automatically. Don't promise extra steps.
 
 Opening an auction:
 - When Brian says "open an auction on <order>", "take bids on <order>", "auction off

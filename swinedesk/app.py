@@ -236,6 +236,7 @@ _ACTION_WORKFLOW: dict[str, str] = {
     "HEALTH_CERT_OVERDUE": "awaiting_health_cert",
     "VET_CHECK_REMINDER": "awaiting_health_cert",
     "FREIGHT_NOMINATION_REMINDER": "awaiting_freight_assignment",
+    "FREIGHT_DRIVER_ASSIGNMENT_REMINDER": "awaiting_driver_assignment",
     "DRIVER_MESSAGE_SCALE_TICKET": "awaiting_driver_action",
     "DRIVER_MESSAGE_HEALTH_CERTIFICATE": "awaiting_driver_action",
     "BUYER_NOMINATION_REMINDER": "awaiting_buyer_nomination",

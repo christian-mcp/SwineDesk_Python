@@ -133,6 +133,7 @@ BROKER_TOOL_PATHS = COMMON_TOOL_PATHS | {
     "/tools/loads/get_freight_load_detail",
     "/tools/loads/confirm_freight_assignment",
     "/tools/loads/submit_freight_details",
+    "/tools/loads/assign_freight_company",
     # Health
     "/tools/health/get_cert_instructions",
     "/tools/health/get_vet_pending_loads",
