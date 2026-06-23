@@ -150,6 +150,7 @@ BROKER_TOOL_PATHS = COMMON_TOOL_PATHS | {
     "/tools/grading/submit_grading",
     "/tools/grading/update_grading_draft",
     "/tools/grading/get_submission_status",
+    "/tools/grading/record_grading_adjustment",
     # Issues
     "/tools/issues/report_delivery_issue",
     # CRM

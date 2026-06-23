@@ -7,6 +7,8 @@ from typing import Any
 
 from swinedesk.backend_client import get_backend_client
 from swinedesk.hellosign import send_grade_sheet
+from swinedesk.notifications import send_sms_notification
+from swinedesk.session import update_session
 from swinedesk.tool_helpers import (
     clear_workflow_draft,
     ensure_role,
@@ -48,7 +50,9 @@ class SubmitGrading(Tool, name="submit_grading"):
     TOOL_PATH = "/tools/grading/submit_grading"
     DESCRIPTION = "Submit grading results after a buyer receives a load."
     ARGUMENTS = {
-        "load_id": Arg("Load identifier"),
+        "load_id": Arg(
+            "Load identifier. Omit to use the load the bot last asked you to grade.", optional=True
+        ),
         "grading_date": Arg("Date grading was completed", optional=True),
         "grader_name": Arg("Person who completed grading", optional=True),
         "head_count_received": Arg("Head count received"),
@@ -83,7 +87,12 @@ class SubmitGrading(Tool, name="submit_grading"):
 
         load_id = str(arguments.get("load_id", "")).strip()
         if not load_id:
-            return {"error": "load_id is required."}
+            # Fall back to the load the offload hand-off (or a grading reminder) seeded on the session.
+            refs = list(getattr(state, "referenced_load_ids", []) or [])
+            load_id = refs[-1] if refs else ""
+        if not load_id:
+            return {"error": "Which load is this grading for?"}
+        arguments["load_id"] = load_id
 
         merge_workflow_draft(state, "submit_grading", arguments)
         backend = get_backend_client()
@@ -146,7 +155,47 @@ class SubmitGrading(Tool, name="submit_grading"):
 
         clear_workflow_draft(state, keys=GRADING_DRAFT_KEYS)
 
+        # Phase 5: grading reconciliation. Within tolerance the deal settles as agreed; outside it,
+        # ping the broker to call the buyer and seed the broker's session so a "negotiated to X"
+        # reply records the adjustment without quoting an id.
+        within = response.get("within_tolerance")
+        recon_note = ""
+        if within is False:
+            pct = response.get("writeoff_pct")
+            total_wo = response.get("total_writeoffs")
+            head = response.get("head")
+            tol = response.get("tolerance_pct", 1)
+            order_id = str(response.get("order_id") or "")
+            broker_phone = response.get("broker_phone")
+            buyer_name = response.get("buyer_first_name") or "the buyer"
+            buyer_co = response.get("buyer_company") or "buyer"
+            if broker_phone:
+                try:
+                    await send_sms_notification(
+                        broker_phone,
+                        f"Grading came in on load {load_id} ({buyer_co}): {total_wo} write-offs on {head} "
+                        f"head, {pct}%, over the {tol}% line. Might want to call {buyer_name}. Reply here "
+                        "with the settled price once you've squared it, e.g. 'negotiated down to 48'.",
+                    )
+                    seed: dict[str, Any] = {"active_workflow": "awaiting_grading_adjustment"}
+                    if order_id:
+                        seed["referenced_order_ids"] = [order_id]
+                    if load_id:
+                        seed["referenced_load_ids"] = [load_id]
+                    await update_session(broker_phone, seed)
+                except Exception:
+                    logger.exception("Failed to notify broker of grading variance for %s", load_id)
+            recon_note = (
+                f" Write-offs came in at {pct}% ({total_wo} of {head}), above the {tol}% line, so I've "
+                "flagged your broker to give you a call."
+            )
+        elif within is True:
+            recon_note = " Everything's within tolerance, so you're all set, this settles as agreed."
+
+        if getattr(state, "active_workflow", None) == "awaiting_grading":
+            state.active_workflow = None
+
         return {
-            "result": response.get("msg", f"Submitted grading for {load_id}."),
+            "result": f"Got it, grading's logged for load {load_id}.{recon_note}",
             **response,
         }

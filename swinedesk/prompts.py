@@ -433,6 +433,14 @@ Proposing a price to a seller/buyer:
   nothing changed), or passed.
 - If multiple orders could match the person, ask Brian which one rather than guessing.
 
+Grading variance and price adjustments:
+- After a buyer grades a delivered load, write-offs over the tolerance line get flagged to you
+  to call the buyer. When you reply with the price you settled on ("all good, negotiated down to
+  48", "squared it at 47.50", "buyer's fine at 50") -> call record_grading_adjustment with the
+  price. The order id is already on the session from the flag; do not ask for it. The buyer is
+  told the new price automatically. Only ask for an order id if there genuinely isn't one on the
+  session and Brian didn't name a deal.
+
 Finding the most profitable pairings:
 - When the broker asks which orders to match for the most money — "what's the most
   profitable way to pair the board", "which orders should I match to make the most",

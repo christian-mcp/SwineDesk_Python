@@ -478,6 +478,20 @@ class BackendClient:
                     payload[key] = value
         return await self.post(f"/v1/query/orders/{order_id}/assign-freight", payload)
 
+    async def record_grading_adjustment(
+        self, order_id: str, price: float, reason: str = "", side: str = ""
+    ) -> dict[str, Any]:
+        """Record a post-grading negotiated settlement price (updates price + logs a note)."""
+        payload: dict[str, Any] = {"price": price}
+        if reason:
+            payload["reason"] = reason
+        if side:
+            payload["side"] = side
+        try:
+            return await self.post(f"/v1/query/orders/{order_id}/grading-adjustment", payload)
+        except httpx.HTTPError as exc:
+            return {"success": False, "error": f"Grading adjustment unavailable: {exc}"}
+
     async def update_order_price(
         self, order_id: str, price: float, side: str = ""
     ) -> dict[str, Any]:
