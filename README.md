@@ -127,8 +127,16 @@ Update `.env` with:
 - `TWILIO_PHONE_NUMBER`
 - `BACKEND_API_URL`
 - `BACKEND_API_TOKEN`
+- `DD_API_KEY`
+- `DD_LLMOBS_ENABLED=true`
+- `DD_LLMOBS_AGENTLESS_ENABLED=true`
+- `DD_LLMOBS_ML_APP=swinedesk`
+- `DD_SITE=datadoghq.com`
 
 `BACKEND_API_TOKEN` is also used to protect the backend-triggered notification webhook on SwineDesk Python, so the Java backend should send the same bearer token when calling `/notifications/sms`.
+
+Datadog LLM Observability data for this app is available at:
+`https://app.datadoghq.com/llm/applications?query=@ml_app:swinedesk`.
 
 ### 3) Run server
 

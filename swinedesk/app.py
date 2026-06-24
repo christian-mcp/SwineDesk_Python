@@ -9,8 +9,14 @@ import re
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Annotated
 
+from dotenv import load_dotenv
+
+load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
+
+import ddtrace.auto  # noqa: F401,E402
 from fastapi import FastAPI, Form, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from twilio.twiml.messaging_response import MessagingResponse
