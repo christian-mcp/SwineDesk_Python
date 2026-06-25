@@ -283,6 +283,7 @@ async def cleanup_expired_sessions_once() -> int:
 
 async def _cleanup_loop() -> None:
     # Imported lazily to keep the session store decoupled from these stores.
+    from swinedesk.beta_approvals import purge_resolved as purge_resolved_approvals
     from swinedesk.negotiations import purge_resolved_offers
     from swinedesk.reminders import purge_sent_reminders
 
@@ -291,6 +292,7 @@ async def _cleanup_loop() -> None:
         await cleanup_expired_sessions_once()
         await purge_sent_reminders()
         await purge_resolved_offers()
+        await purge_resolved_approvals()
 
 
 def start_cleanup_task() -> None:

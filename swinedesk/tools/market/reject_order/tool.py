@@ -6,7 +6,7 @@ import logging
 from typing import Any
 
 from swinedesk.backend_client import get_backend_client
-from swinedesk.notifications import send_sms_notification
+from swinedesk.notifications import send_sms_raw
 from swinedesk.tool_helpers import ensure_role
 from swinedesk.tooling import Arg, Tool
 
@@ -36,7 +36,8 @@ async def _execute_reject(args: dict[str, Any], state: Any) -> dict[str, Any]:
             "Reach out if you want to talk it through."
         )
         try:
-            await send_sms_notification(submitter_phone, msg)
+            # Broker already confirmed the reject (YES gate) — bypass Beta Test Mode.
+            await send_sms_raw(submitter_phone, msg)
         except Exception:
             logger.exception("Failed to notify submitter %s about reject", submitter_phone)
 

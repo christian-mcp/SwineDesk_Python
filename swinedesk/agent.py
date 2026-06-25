@@ -166,6 +166,9 @@ BROKER_TOOL_PATHS = COMMON_TOOL_PATHS | {
     "/tools/ops/send_role_notification",
     "/tools/ops/blast_message",
     "/tools/ops/confirm_action",
+    # Beta Test Mode: review/approve outbound drafts held for the broker
+    "/tools/ops/review_pending_messages",
+    "/tools/ops/resolve_pending_message",
 }
 
 ROLE_REGISTRIES = {

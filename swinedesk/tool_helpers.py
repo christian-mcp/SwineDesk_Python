@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from swinedesk.notifications import send_sms_notification
+from swinedesk.notifications import send_sms_raw
 from swinedesk.phone_region import infer_region_from_phone
 from swinedesk.settings import settings
 from swinedesk.state import SwineDeskState
@@ -155,7 +155,8 @@ async def notify_broker_order_created(
     parts.append(f"At: {datetime.now(timezone.utc).isoformat(timespec='seconds')}")
     message = "\n".join(parts)
     try:
-        await send_sms_notification(broker_phone, message)
+        # Broker-facing alert — never held for the broker's own approval.
+        await send_sms_raw(broker_phone, message)
     except Exception:
         logger.exception("Failed to notify broker about new %s", label)
 

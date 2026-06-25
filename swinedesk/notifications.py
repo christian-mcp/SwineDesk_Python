@@ -104,8 +104,14 @@ async def send_email_with_pdf(to: str, subject: str, body: str,
         return {"success": False, "error": str(exc), "to": to}
 
 
-async def send_sms_notification(to_phone: str, message: str) -> dict[str, str | bool]:
-    """Send an SMS if Twilio is configured."""
+async def send_sms_raw(to_phone: str, message: str) -> dict[str, str | bool]:
+    """Send an SMS if Twilio is configured, with NO Beta Test Mode gating.
+
+    Use this for sends that must never be held for broker approval: the message
+    the broker already dictated/confirmed (blast, direct message, price offers),
+    a text back to the same caller, and broker-facing alerts. Autonomous bot
+    notifications to other users should go through send_sms_notification instead.
+    """
     client = _get_twilio_client()
     from_phone = settings.twilio_phone_number
     if client is None or not from_phone or not to_phone:
@@ -118,3 +124,19 @@ async def send_sms_notification(to_phone: str, message: str) -> dict[str, str | 
     except TwilioException as exc:
         logger.exception("Failed to send SMS notification to %s", to_phone)
         return {"success": False, "error": str(exc), "to_phone": to_phone}
+
+
+async def send_sms_notification(to_phone: str, message: str) -> dict[str, str | bool]:
+    """Send an SMS to another user, gated by Beta Test Mode.
+
+    When Beta Test Mode is on and the recipient is not the broker, the message is
+    held in the approval queue and the broker is asked to confirm it instead of
+    sending right away. Otherwise it sends immediately via send_sms_raw.
+    """
+    # Lazy import breaks the notifications <-> beta_approvals import cycle.
+    from swinedesk.beta_approvals import maybe_queue_outbound
+
+    queued = await maybe_queue_outbound(to_phone, message)
+    if queued is not None:
+        return queued
+    return await send_sms_raw(to_phone, message)

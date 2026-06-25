@@ -21,7 +21,7 @@ from swinedesk.agent import run_swinedesk_agent
 from swinedesk.backend_client import get_backend_client
 from swinedesk.daily_summary import start_daily_summary_task
 from swinedesk.negotiations import get_pending_offer_for_phone
-from swinedesk.notifications import send_sms_notification
+from swinedesk.notifications import send_sms_notification, send_sms_raw
 from swinedesk.reminders import start_reminder_scheduler
 from swinedesk.phone_region import infer_region_from_phone
 from swinedesk.session import (
@@ -408,6 +408,16 @@ async def _process_inbound(phone: str, inbound: str, channel: Channel) -> Inboun
     if pending_offer:
         state.pending_offer = pending_offer
         logger.info("Inbound phone=%s has pending price offer %s", phone, pending_offer.get("id"))
+
+    # Beta Test Mode: surface any drafts awaiting this broker's approval so the agent
+    # can review/approve them this turn (works even without live Twilio).
+    if settings.beta_test_mode and resolved_role == "broker":
+        from swinedesk.beta_approvals import list_pending
+
+        approvals = await list_pending()
+        if approvals:
+            state.pending_approvals = approvals
+            logger.info("Broker %s has %d outbound drafts awaiting approval", phone, len(approvals))
     logger.info(
         "Running agent: channel=%s role=%s tier=%s actor=%s workflow=%s",
         channel,
@@ -543,9 +553,11 @@ async def _finish_voice_turn(call_sid: str, request: Request) -> Response:
         response.hangup()
         return Response(str(response), media_type="text/xml")
 
-    # Important actions get a written confirmation texted to the caller.
+    # Important actions get a written confirmation texted to the caller. This is a
+    # reply to the same caller, not a proactive message to another user, so it
+    # bypasses Beta Test Mode gating.
     if result.important and result.reply:
-        sms_result = await send_sms_notification(phone, result.reply)
+        sms_result = await send_sms_raw(phone, result.reply)
         logger.info("Voice confirmation SMS to %s: %s", phone, sms_result.get("success"))
 
     if result.handled_unknown:

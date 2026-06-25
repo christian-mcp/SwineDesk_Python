@@ -7,7 +7,7 @@ from typing import Any
 
 import httpx
 
-from swinedesk.notifications import send_sms_notification
+from swinedesk.notifications import send_sms_raw
 from swinedesk.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -326,7 +326,7 @@ class BackendClient:
             message = str(payload.get("message", "")).strip()
             if not broker_phone or not message:
                 return {"success": False, "error": "Missing broker phone or message."}
-            return await send_sms_notification(broker_phone, message)
+            return await send_sms_raw(broker_phone, message)
 
     async def send_role_notification(self, payload: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -334,7 +334,7 @@ class BackendClient:
         except httpx.HTTPError:
             to_phone = str(payload.get("to_phone", ""))
             message = str(payload.get("message", ""))
-            return await send_sms_notification(to_phone, message)
+            return await send_sms_raw(to_phone, message)
 
     async def create_reminder(self, payload: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -508,7 +508,7 @@ class BackendClient:
         try:
             return await self.post("/v1/sms/ops/send-direct", payload)
         except httpx.HTTPError:
-            return await send_sms_notification(to_phone, message)
+            return await send_sms_raw(to_phone, message)
 
 
 _backend_client: BackendClient | None = None

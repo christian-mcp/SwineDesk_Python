@@ -41,6 +41,9 @@ class SwineDeskState(BaseModel):
     # Shape: {"kind": "blast"|"reject", "args": {...}, "summary": "<human summary>"}
     # Never persisted to session storage — cleared once confirmed or cancelled.
     pending_action: dict[str, Any] | None = None
+    # Transient: Beta Test Mode drafts awaiting this broker's approval, loaded per
+    # inbound from the beta-approval store. Never persisted to session storage.
+    pending_approvals: list[dict[str, Any]] | None = None
 
     def merge_draft(self, values: dict[str, Any]) -> None:
         """Merge draft workflow data into state."""

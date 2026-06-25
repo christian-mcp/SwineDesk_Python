@@ -47,6 +47,12 @@ class Settings(BaseSettings):
         alias="VOICE_GREETING",
     )
 
+    # Beta Test Mode: when on, any message the BOT autonomously generates for another
+    # user (deal/vet/freight/driver notifications, etc.) is held in an approval queue
+    # and routed to the broker for review over SMS before it goes out. Broker-dictated
+    # sends (blast, direct message, price offers) and same-caller texts are NOT gated.
+    beta_test_mode: bool = Field(default=False, alias="BETA_TEST_MODE")
+
     backend_api_url: str = Field(default="", alias="BACKEND_API_URL")
     backend_api_token: str = Field(default="", alias="BACKEND_API_TOKEN")
     backend_timeout_seconds: int = Field(default=15, alias="BACKEND_TIMEOUT_SECONDS")
@@ -96,6 +102,10 @@ class Settings(BaseSettings):
         default=DEFAULT_RUNTIME_DIR / "negotiations.json",
         alias="NEGOTIATION_STORE_PATH",
     )
+    beta_approval_store_path: Path = Field(
+        default=DEFAULT_RUNTIME_DIR / "beta_approvals.json",
+        alias="BETA_APPROVAL_STORE_PATH",
+    )
 
     @property
     def effective_broker_alert_phone(self) -> str:
@@ -116,6 +126,11 @@ class Settings(BaseSettings):
             if digits:
                 out.add(digits)
         return out
+
+    def is_broker_phone(self, phone: str | None) -> bool:
+        """True if this phone is on the broker SMS allowlist (BROKER_SMS_PHONES)."""
+        digits = "".join(ch for ch in (phone or "") if ch.isdigit())
+        return bool(digits) and digits in self.broker_sms_phone_set
 
 
 settings = Settings()

@@ -385,6 +385,8 @@ Supported jobs:
 13. Ask a seller or buyer whether they'll accept a price, and update their order if they agree
 14. Open a Dutch-auction on an order and invite all buyers to bid
 15. Close an open auction and book the best bid
+16. (Beta Test Mode only) Review, approve, skip, or reword outbound messages the bot
+    wants to send to other users before they go out
 
 Logging a call and setting a follow-up (notes + reminders):
 - When Brian dictates what happened on a call or in the field — "Spoke to X...", "Talked
@@ -625,6 +627,42 @@ def _state_summary(state: SwineDeskState) -> str:
             "Do NOT re-call blast_message or reject_order to confirm — that would re-stage."
         )
 
+    beta_rule = ""
+    if settings.beta_test_mode and state.role == "broker":
+        approvals = state.pending_approvals or []
+        if approvals:
+            payload["pending_approvals"] = [
+                {
+                    "id": a.get("id"),
+                    "to": a.get("to_label") or a.get("to_phone"),
+                    "message": a.get("message"),
+                }
+                for a in approvals
+            ]
+            beta_rule = (
+                " IMPORTANT — Beta Test Mode is ON. The bot is holding "
+                f"{len(approvals)} outbound message(s) to other users for YOUR approval "
+                "(see pending_approvals). Nothing is sent to those users until you approve. "
+                "Resolve them this turn when the broker refers to one: "
+                "1) Approve/send (e.g. 'approve 3', 'yes send it', 'looks good') -> call "
+                "resolve_pending_message with that approval_id and decision='approve'. "
+                "2) Skip/drop (e.g. 'skip 3', 'don't send that', 'kill it') -> call "
+                "resolve_pending_message with decision='skip'. "
+                "3) Replace it — the broker dictates different wording ('no, tell them ...', "
+                "'send this instead: ...') OR gives feedback to reword -> call "
+                "resolve_pending_message with decision='revise' and message set to the exact "
+                "text to send (use the broker's words verbatim if given, otherwise rewrite the "
+                "draft per their feedback). "
+                "If the broker just asks what's pending, call review_pending_messages. "
+                "Only act on the draft the broker is clearly referring to; if it's ambiguous "
+                "which # they mean, ask."
+            )
+        else:
+            beta_rule = (
+                " Beta Test Mode is ON: any message the bot generates for another user is "
+                "held for your approval before it goes out. There are none waiting right now."
+            )
+
     offer_rule = ""
     if state.pending_offer:
         po = state.pending_offer
@@ -657,6 +695,7 @@ def _state_summary(state: SwineDeskState) -> str:
         "Market MUST be exactly WEAN_PIGS or FEEDER_PIGS."
         + pending_action_rule
         + offer_rule
+        + beta_rule
     )
     return f"Current session context:\n{json.dumps(payload, ensure_ascii=True)}\n\n{rules}"
 
