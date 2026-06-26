@@ -37,6 +37,9 @@ class GetPendingTasks(Tool, name="get_pending_tasks"):
 
         lines: list[str] = [f"Pending tasks ({len(tasks)}):"]
         for t in tasks[:10]:
-            lines.append(f"  [{t.get('type', '?')}] {t.get('description', '')} — {t.get('ref', '')}")
+            name = t.get("label") or t.get("actionType") or "Task"
+            load = t.get("loadId")
+            ref = f" — load #{load}" if load else ""
+            lines.append(f"  - {name}{ref}")
 
         return {"result": "\n".join(lines), **response}

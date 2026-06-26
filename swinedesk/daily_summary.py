@@ -36,6 +36,14 @@ def build_recap_message(response: dict[str, Any]) -> str:
         f"  New requests: {response.get('new_requests', 0)} ({response.get('head_requested', 0)} head)",
         f"  Pending tasks: {response.get('pending_tasks', 0)}",
     ]
+    # Break the pending-task count down into what actually needs doing — assign freight,
+    # vet checks, health certs, etc. — grouped by type with a few load refs for context.
+    for item in response.get("pending_task_items") or []:
+        name = item.get("label") or item.get("type") or "Task"
+        count = item.get("count", 0)
+        loads = item.get("loads") or []
+        refs = f" ({', '.join('#' + str(l) for l in loads)})" if loads else ""
+        lines.append(f"    - {name}: {count}{refs}")
     return "\n".join(lines)
 
 

@@ -24,8 +24,9 @@ class GetDailyRecap(Tool, name="get_daily_recap"):
     TOOL_PATH = "/tools/crm/get_daily_recap"
     DESCRIPTION = (
         "Broker-only. Recap of recent desk activity over a look-back window: new sell "
-        "listings and buy requests created in the window, head counts, and outstanding "
-        "task count. Use for 'today's recap' / 'end of day summary' (default, last 24h), "
+        "listings and buy requests created in the window, head counts, and a breakdown of "
+        "outstanding tasks (assign freight, vet checks, health certs, etc.). Use for "
+        "'today's recap' / 'end of day summary' (default, last 24h), "
         "'weekly recap' (days=7), or any custom window the broker asks for. "
         "For loads/deliveries coming UP in the future, use get_upcoming_loads instead."
     )
